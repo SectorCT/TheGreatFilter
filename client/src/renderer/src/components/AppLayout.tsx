@@ -5,7 +5,7 @@ export function AppLayout(): React.JSX.Element {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <AppSidebar />
-      <main className="flex-1 overflow-y-auto">
+      <main className="min-w-0 flex-1 overflow-auto">
         <Outlet />
       </main>
     </div>

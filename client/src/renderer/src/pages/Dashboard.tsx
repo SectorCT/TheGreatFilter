@@ -8,8 +8,8 @@ export function Dashboard(): React.JSX.Element {
   const navigate = useNavigate()
 
   return (
-    <div className="p-6 lg:p-8">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="p-4 md:p-6 lg:p-8">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Dashboard</h1>
           <p className="text-sm text-muted-foreground">
@@ -22,7 +22,7 @@ export function Dashboard(): React.JSX.Element {
         </Button>
       </div>
 
-      <div className="mb-6 grid grid-cols-4 gap-4">
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           { label: 'Total Filters', value: '5', Icon: FlaskConical },
           { label: 'Measurements', value: '4', Icon: Droplets },
@@ -39,49 +39,53 @@ export function Dashboard(): React.JSX.Element {
         ))}
       </div>
 
-      <div className="grid grid-cols-5 gap-6">
-        <div className="col-span-3 rounded-[6px] border border-border bg-card">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+        <div className="rounded-[6px] border border-border bg-card xl:col-span-3">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <h2 className="text-sm font-semibold">Recent Filters</h2>
             <Button variant="ghost" size="sm" onClick={() => navigate('/filters')}>
               View All <ArrowRight size={14} strokeWidth={1.5} />
             </Button>
           </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-table-header text-left">
-                <th className="px-4 py-2.5 font-medium text-muted-foreground">ID</th>
-                <th className="px-4 py-2.5 font-medium text-muted-foreground">Name</th>
-                <th className="px-4 py-2.5 font-medium text-muted-foreground">Source</th>
-                <th className="px-4 py-2.5 font-medium text-muted-foreground">Date</th>
-                <th className="px-4 py-2.5 font-medium text-muted-foreground">Status</th>
-                <th className="px-4 py-2.5 font-medium text-muted-foreground" />
-              </tr>
-            </thead>
-            <tbody>
-              {filters.slice(0, 5).map((item) => (
-                <tr
-                  key={item.id}
-                  onClick={() => navigate(`/filters/${item.id}`)}
-                  className="cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-table-row-hover"
-                >
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{item.id}</td>
-                  <td className="px-4 py-3 font-medium">{item.name}</td>
-                  <td className="px-4 py-3">{item.source}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{item.date}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={item.status} />
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    <ArrowRight size={14} strokeWidth={1.5} />
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="min-w-[720px] w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-table-header text-left">
+                  <th className="px-4 py-2.5 font-medium text-muted-foreground">ID</th>
+                  <th className="px-4 py-2.5 font-medium text-muted-foreground">Name</th>
+                  <th className="px-4 py-2.5 font-medium text-muted-foreground">Source</th>
+                  <th className="px-4 py-2.5 font-medium text-muted-foreground">Date</th>
+                  <th className="px-4 py-2.5 font-medium text-muted-foreground">Status</th>
+                  <th className="px-4 py-2.5 font-medium text-muted-foreground" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filters.slice(0, 5).map((item) => (
+                  <tr
+                    key={item.id}
+                    onClick={() => navigate(`/filters/${item.id}`)}
+                    className="cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-table-row-hover"
+                  >
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{item.id}</td>
+                    <td className="px-4 py-3 font-medium">{item.name}</td>
+                    <td className="px-4 py-3">{item.source}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                      {item.date}
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={item.status} />
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      <ArrowRight size={14} strokeWidth={1.5} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <div className="col-span-2 rounded-[6px] border border-border bg-card">
+        <div className="rounded-[6px] border border-border bg-card xl:col-span-2">
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <h2 className="text-sm font-semibold">Measurements</h2>
             <Button variant="ghost" size="sm" onClick={() => navigate('/measurements')}>
