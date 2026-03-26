@@ -15,14 +15,16 @@
 ### What the page must do (high-level)
 - Import the measurement from the CSV file.
 - Create a measurement record and make it visible in `Dashboard`.
-- Parse the CSV into the required measurement payload (Temperature, pH, and optional parameters) and send it as JSON to `POST /measurements` with `source = "csv_import"`.
+- Upload CSV as `multipart/form-data` to `POST /measurements/import/csv/`.
+- Include `file` (required) and optional `name` (measurement label).
+- Backend parses CSV into measurement payload with required `temperature` and `pH`; other parameters remain optional.
 
 ## Page-to-Page Contract (Navigation)
 - `CSV Import` -> `Dashboard` after the measurement is imported successfully.
 
 ## Required Backend Contract (Minimal)
 See `docs/contracts/page-api-contract.md`:
-- `POST /measurements` with `source = "csv_import"`
+- `POST /measurements/import/csv/` (`multipart/form-data`)
 
 CSV column format:
 - Intentionally to be further defined later.

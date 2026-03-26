@@ -17,6 +17,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@renderer/components/ui/button'
+import { importMeasurementCsv } from '@renderer/utils/api/endpoints'
+import { ApiError } from '@renderer/utils/api/makeAuthenticatedReq'
 import { cn } from '@renderer/lib/utils'
 
 type Method = 'manual' | 'usb' | 'map' | 'csv'
@@ -142,6 +144,33 @@ function CoreValueCard({
   )
 }
 
+const parseCsvImportError = (error: unknown): string => {
+  if (!(error instanceof ApiError)) {
+    return 'CSV import failed. Please try again.'
+  }
+
+  if (!error.responseBodyText) {
+    return `CSV import failed (HTTP ${error.status}).`
+  }
+
+  try {
+    const parsed = JSON.parse(error.responseBodyText) as Record<string, unknown>
+    const fieldMessages: string[] = []
+    for (const [field, value] of Object.entries(parsed)) {
+      if (Array.isArray(value) && value.length > 0) {
+        fieldMessages.push(`${field}: ${value.map(String).join(', ')}`)
+      } else if (typeof value === 'string') {
+        fieldMessages.push(`${field}: ${value}`)
+      }
+    }
+    return fieldMessages.length > 0
+      ? fieldMessages.join(' | ')
+      : `CSV import failed (HTTP ${error.status}).`
+  } catch {
+    return error.responseBodyText
+  }
+}
+
 export function AddMeasurement(): React.JSX.Element {
   const WET_POLL_INTERVAL_MS = 300
   const navigate = useNavigate()
@@ -154,6 +183,10 @@ export function AddMeasurement(): React.JSX.Element {
   const [measurement, setMeasurement] = useState<MeasurementPayload | null>(null)
   const [createdMeasurementId, setCreatedMeasurementId] = useState('')
   const [showRawJson, setShowRawJson] = useState(false)
+  const [csvFile, setCsvFile] = useState<File | null>(null)
+  const [csvLabel, setCsvLabel] = useState('')
+  const [csvBusy, setCsvBusy] = useState(false)
+  const [csvError, setCsvError] = useState('')
   const stopWaitingForWetRef = useRef(false)
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000'
@@ -318,6 +351,24 @@ export function AddMeasurement(): React.JSX.Element {
       }
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function importCsvMeasurement(): Promise<void> {
+    if (!csvFile) {
+      setCsvError('Select a CSV file first.')
+      return
+    }
+
+    setCsvBusy(true)
+    setCsvError('')
+    try {
+      await importMeasurementCsv({ file: csvFile, name: csvLabel })
+      navigate('/dashboard')
+    } catch (error) {
+      setCsvError(parseCsvImportError(error))
+    } finally {
+      setCsvBusy(false)
     }
   }
 
@@ -665,10 +716,62 @@ export function AddMeasurement(): React.JSX.Element {
         />
       ) : null}
       {selectedMethod === 'csv' ? (
-        <PlaceholderPanel
-          title="Import CSV"
-          description="Upload a CSV file containing water quality parameter values."
-        />
+        <div className="max-w-2xl rounded-[6px] border border-border bg-card p-4 md:p-5">
+          <div className="mb-4">
+            <h2 className="text-sm font-semibold">Import CSV</h2>
+            <p className="text-sm text-muted-foreground">
+              Temperature and pH are required. Other parameters are optional.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <label className="scientific-label mb-1 block">
+                CSV File <span className="text-destructive">*</span>
+              </label>
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null
+                  setCsvFile(file)
+                }}
+                className="block w-full cursor-pointer rounded-[6px] border border-input bg-surface-elevated px-3 py-2 text-sm text-foreground file:mr-3 file:rounded-[6px] file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:text-sm file:font-medium hover:file:bg-secondary/80"
+                disabled={csvBusy}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Accepted format: .csv (headers can include aliases supported by backend parser).
+              </p>
+            </div>
+
+            <div>
+              <label className="scientific-label mb-1 block">Measurement Label (optional)</label>
+              <input
+                value={csvLabel}
+                onChange={(event) => setCsvLabel(event.target.value)}
+                placeholder="e.g. River Station Alpha"
+                className="h-9 w-full rounded-[6px] border border-input bg-surface-elevated px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                disabled={csvBusy}
+              />
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Button onClick={() => void importCsvMeasurement()} disabled={csvBusy || !csvFile}>
+              {csvBusy ? <Loader2 size={14} className="animate-spin" /> : <FileUp size={14} />}
+              Import CSV
+            </Button>
+            <Button variant="outline" onClick={() => navigate('/dashboard')} disabled={csvBusy}>
+              Cancel
+            </Button>
+          </div>
+
+          {csvError ? (
+            <div className="mt-4 rounded-[6px] border border-destructive/30 bg-destructive/10 px-4 py-3">
+              <p className="text-sm text-destructive">{csvError}</p>
+            </div>
+          ) : null}
+        </div>
       ) : null}
     </div>
   )
