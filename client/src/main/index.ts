@@ -5,7 +5,7 @@ import { ReadlineParser, SerialPort } from 'serialport'
 import icon from '../../resources/icon.png?asset'
 
 const SERIAL_BAUD_RATE = 115200
-const READ_TIMEOUT_MS = 5000
+const READ_TIMEOUT_MS = 1200
 const RETRY_COUNT = 1
 
 type DeviceStatus = 'WET' | 'DRY'

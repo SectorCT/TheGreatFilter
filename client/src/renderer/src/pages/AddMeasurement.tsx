@@ -1,10 +1,49 @@
-import { ArrowLeft, FileUp, Keyboard, Map, type LucideIcon, Usb } from 'lucide-react'
-import { useState } from 'react'
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ChevronDown,
+  Droplets,
+  FileUp,
+  Keyboard,
+  Loader2,
+  Map,
+  type LucideIcon,
+  RefreshCw,
+  Save,
+  Thermometer,
+  Usb,
+  Zap
+} from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@renderer/components/ui/button'
 import { cn } from '@renderer/lib/utils'
 
 type Method = 'manual' | 'usb' | 'map' | 'csv'
+type UsbStatus =
+  | 'idle'
+  | 'connected'
+  | 'reading'
+  | 'waiting_wet'
+  | 'dry'
+  | 'measurement'
+  | 'imported'
+  | 'error'
+
+type MeasurementParameter = {
+  file?: string
+  parameterCode: string
+  parameterName?: string
+  unit?: string
+  value: number
+}
+
+type MeasurementPayload = {
+  source: 'lab_equipment'
+  temperature: number
+  ph: number
+  parameters: MeasurementParameter[]
+}
 
 const methods: { key: Method; label: string; description: string; icon: LucideIcon }[] = [
   {
@@ -60,22 +99,244 @@ function PlaceholderPanel({
   )
 }
 
+function ConnectionDot({ status }: { status: UsbStatus }): React.JSX.Element {
+  const isConnected = status !== 'idle' && status !== 'error'
+  return (
+    <span
+      className={cn(
+        'inline-block h-2 w-2 rounded-full',
+        isConnected
+          ? 'bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]'
+          : 'bg-muted-foreground/40'
+      )}
+    />
+  )
+}
+
+function CoreValueCard({
+  icon: Icon,
+  label,
+  value,
+  unit,
+  accent
+}: {
+  icon: LucideIcon
+  label: string
+  value: string
+  unit: string
+  accent: string
+}): React.JSX.Element {
+  return (
+    <div className="flex items-center gap-3 rounded-[6px] border border-border bg-card p-4">
+      <div
+        className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-full', accent)}
+      >
+        <Icon size={18} strokeWidth={1.5} />
+      </div>
+      <div className="min-w-0">
+        <p className="scientific-label">{label}</p>
+        <p className="font-mono text-lg font-semibold tabular-nums leading-tight">{value}</p>
+        <p className="text-xs text-muted-foreground">{unit}</p>
+      </div>
+    </div>
+  )
+}
+
 export function AddMeasurement(): React.JSX.Element {
+  const WET_POLL_INTERVAL_MS = 300
   const navigate = useNavigate()
   const [selectedMethod, setSelectedMethod] = useState<Method | null>(null)
+  const [ports, setPorts] = useState<string[]>([])
+  const [selectedPort, setSelectedPort] = useState<string>('')
+  const [usbStatus, setUsbStatus] = useState<UsbStatus>('idle')
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const [measurement, setMeasurement] = useState<MeasurementPayload | null>(null)
+  const [createdMeasurementId, setCreatedMeasurementId] = useState('')
+  const [showRawJson, setShowRawJson] = useState(false)
+  const stopWaitingForWetRef = useRef(false)
+
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000'
+  const labApi = window.labApi ?? window.api
+
+  const isConnected = usbStatus !== 'idle' && usbStatus !== 'error'
+
+  const statusLabel = useMemo(() => {
+    switch (usbStatus) {
+      case 'idle':
+        return 'Disconnected'
+      case 'connected':
+        return 'Connected'
+      case 'reading':
+        return 'Reading'
+      case 'waiting_wet':
+        return 'Waiting for wet probes'
+      case 'dry':
+        return 'Probes dry'
+      case 'measurement':
+        return 'Data ready'
+      case 'imported':
+        return 'Saved'
+      case 'error':
+        return 'Error'
+      default:
+        return usbStatus
+    }
+  }, [usbStatus])
+
+  const refreshPorts = useCallback(async (): Promise<void> => {
+    if (!labApi) {
+      setUsbStatus('error')
+      setMessage('Device API unavailable. Restart Electron app.')
+      return
+    }
+    const availablePorts = await labApi.listPorts()
+    setPorts(availablePorts)
+    if (!selectedPort && availablePorts.length > 0) {
+      setSelectedPort(availablePorts[0])
+    }
+  }, [labApi, selectedPort])
+
+  useEffect(() => {
+    if (selectedMethod !== 'usb' || !labApi) return
+    void refreshPorts()
+  }, [selectedMethod, labApi, refreshPorts])
+
+  useEffect(() => {
+    return () => {
+      stopWaitingForWetRef.current = true
+    }
+  }, [])
+
+  async function connectDevice(): Promise<void> {
+    if (!labApi) {
+      setUsbStatus('error')
+      setMessage('Device API unavailable. Restart Electron app.')
+      return
+    }
+    if (!selectedPort) {
+      setUsbStatus('error')
+      setMessage('Select a serial port first.')
+      return
+    }
+    setBusy(true)
+    setMessage('')
+    try {
+      await labApi.connectDevice(selectedPort)
+      setUsbStatus('connected')
+    } catch (error) {
+      setUsbStatus('error')
+      setMessage(`Connection failed: ${String(error)}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function disconnectDevice(): Promise<void> {
+    if (!labApi) return
+    stopWaitingForWetRef.current = true
+    setBusy(true)
+    setMessage('')
+    try {
+      await labApi.disconnectDevice()
+      setUsbStatus('idle')
+      setMeasurement(null)
+    } catch (error) {
+      setMessage(`Disconnect failed: ${String(error)}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function requestMeasurement(): Promise<void> {
+    if (!labApi) {
+      setUsbStatus('error')
+      setMessage('Device API unavailable. Restart Electron app.')
+      return
+    }
+    setBusy(true)
+    setMessage('')
+    setCreatedMeasurementId('')
+    stopWaitingForWetRef.current = false
+    setUsbStatus('reading')
+    try {
+      while (!stopWaitingForWetRef.current) {
+        const result = await labApi.readMeasurement()
+        if (result.status === 'DRY') {
+          setUsbStatus('waiting_wet')
+          setMeasurement(null)
+          await new Promise((resolve) => setTimeout(resolve, WET_POLL_INTERVAL_MS))
+          continue
+        }
+        if (!result.measurement) {
+          throw new Error('Device returned WET without measurement payload.')
+        }
+        setMeasurement(result.measurement)
+        setUsbStatus('measurement')
+        return
+      }
+      setUsbStatus('connected')
+    } catch (error) {
+      setUsbStatus('error')
+      setMessage(`Read failed: ${String(error)}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function cancelWaitingForWet(): void {
+    stopWaitingForWetRef.current = true
+    setUsbStatus('connected')
+    setBusy(false)
+  }
+
+  async function importMeasurement(): Promise<void> {
+    if (!measurement) return
+    setBusy(true)
+    setMessage('')
+    try {
+      const response = await fetch(`${API_BASE_URL}/measurements`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(measurement)
+      })
+      if (!response.ok) {
+        throw new Error(`Backend returned status ${response.status}.`)
+      }
+      const data = (await response.json()) as { measurementId?: string }
+      if (!data.measurementId) {
+        throw new Error('Missing measurementId from backend response.')
+      }
+      setCreatedMeasurementId(data.measurementId)
+      setUsbStatus('imported')
+    } catch (error) {
+      setUsbStatus('error')
+      if (error instanceof TypeError) {
+        setMessage(`Could not reach backend at ${API_BASE_URL}.`)
+      } else {
+        setMessage(`Import failed: ${String(error)}`)
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
       <div className="mb-6 flex items-center gap-3">
         <button
-          onClick={() => navigate('/dashboard')}
+          onClick={() => (selectedMethod ? setSelectedMethod(null) : navigate('/dashboard'))}
           className="rounded-[6px] p-1.5 transition-colors hover:bg-secondary"
         >
           <ArrowLeft size={16} strokeWidth={1.5} />
         </button>
         <div>
           <h1 className="text-xl font-semibold">Add Water Measurement</h1>
-          <p className="text-sm text-muted-foreground">Select input method</p>
+          <p className="text-sm text-muted-foreground">
+            {selectedMethod
+              ? methods.find((m) => m.key === selectedMethod)?.label
+              : 'Select input method'}
+          </p>
         </div>
       </div>
 
@@ -144,11 +405,259 @@ export function AddMeasurement(): React.JSX.Element {
       ) : null}
 
       {selectedMethod === 'usb' ? (
-        <PlaceholderPanel
-          title="Lab Equipment (USB)"
-          description="Import water measurement from connected hardware sensor."
-        />
+        <div className="max-w-4xl space-y-5">
+          {/* --- Connection bar --- */}
+          <div className="rounded-[6px] border border-border bg-card p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Usb size={15} strokeWidth={1.5} className="text-muted-foreground" />
+                <span className="text-sm font-medium">Device</span>
+                <ConnectionDot status={usbStatus} />
+                <span className="text-xs text-muted-foreground">{statusLabel}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <select
+                  value={selectedPort}
+                  onChange={(event) => setSelectedPort(event.target.value)}
+                  className="h-9 w-full appearance-none rounded-[6px] border border-input bg-surface-elevated pl-3 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  disabled={busy || ports.length === 0 || isConnected}
+                >
+                  {ports.length === 0 && <option value="">No serial ports found</option>}
+                  {ports.map((port) => (
+                    <option key={port} value={port}>
+                      {port}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  size={14}
+                  className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+                />
+              </div>
+
+              <button
+                onClick={() => void refreshPorts()}
+                disabled={busy || isConnected}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] border border-input bg-surface-elevated transition-colors hover:bg-secondary disabled:opacity-40"
+                title="Refresh ports"
+              >
+                <RefreshCw size={14} strokeWidth={1.5} />
+              </button>
+            </div>
+
+            <div className="mt-3">
+              {!isConnected ? (
+                <Button
+                  className="w-full"
+                  onClick={() => void connectDevice()}
+                  disabled={busy || !selectedPort}
+                >
+                  {busy ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Usb size={14} strokeWidth={1.5} />
+                  )}
+                  Connect device
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div className="flex flex-1 items-center gap-2 rounded-[6px] border border-emerald-600/30 bg-emerald-500/10 px-4 py-2">
+                    <CheckCircle2
+                      size={14}
+                      strokeWidth={1.5}
+                      className="shrink-0 text-emerald-600"
+                    />
+                    <span className="text-sm font-medium text-emerald-700">
+                      Connected — {selectedPort}
+                    </span>
+                  </div>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => void disconnectDevice()}
+                    disabled={busy}
+                  >
+                    Disconnect
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* --- CTA: Request measurement --- */}
+          <Button
+            size="lg"
+            className="w-full text-base"
+            onClick={() => void requestMeasurement()}
+            disabled={busy || !isConnected}
+          >
+            {usbStatus === 'reading' ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Zap size={16} strokeWidth={1.5} />
+            )}
+            {usbStatus === 'reading' ? 'Reading from device...' : 'Request Measurement'}
+          </Button>
+
+          {/* --- Dry warning --- */}
+          {usbStatus === 'dry' && (
+            <div className="flex items-center gap-3 rounded-[6px] border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+              <Droplets size={18} strokeWidth={1.5} className="shrink-0 text-amber-600" />
+              <div>
+                <p className="text-sm font-medium text-amber-700">Probes are dry</p>
+                <p className="text-xs text-amber-600/80">
+                  Place probes in water and press Request Measurement again.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {usbStatus === 'waiting_wet' && (
+            <div className="flex items-center justify-between gap-3 rounded-[6px] border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <Loader2 size={18} className="animate-spin text-amber-600" />
+                <div>
+                  <p className="text-sm font-medium text-amber-700">
+                    Waiting for probes to get wet
+                  </p>
+                  <p className="text-xs text-amber-600/80">
+                    Keep probes in water. Auto-capture runs every{' '}
+                    {(WET_POLL_INTERVAL_MS / 1000).toFixed(1)}s.
+                  </p>
+                </div>
+              </div>
+              <Button size="sm" variant="outline" onClick={cancelWaitingForWet}>
+                Cancel
+              </Button>
+            </div>
+          )}
+
+          {/* --- Measurement results --- */}
+          {measurement && (
+            <div className="space-y-4">
+              {/* Core values hero cards */}
+              <div className="grid grid-cols-2 gap-3">
+                <CoreValueCard
+                  icon={Thermometer}
+                  label="Temperature"
+                  value={measurement.temperature.toFixed(1)}
+                  unit="deg C"
+                  accent="bg-orange-500/10 text-orange-600"
+                />
+                <CoreValueCard
+                  icon={Droplets}
+                  label="pH"
+                  value={measurement.ph.toFixed(2)}
+                  unit="dimensionless"
+                  accent="bg-blue-500/10 text-blue-600"
+                />
+              </div>
+
+              {/* Parameters table */}
+              <div className="rounded-[6px] border border-border">
+                <div className="flex items-center justify-between border-b border-border bg-muted/50 px-4 py-2.5">
+                  <p className="scientific-label">Parameters ({measurement.parameters.length})</p>
+                  <button
+                    onClick={() => setShowRawJson(!showRawJson)}
+                    className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    {showRawJson ? 'Table view' : 'Raw JSON'}
+                  </button>
+                </div>
+
+                {showRawJson ? (
+                  <pre className="max-h-72 overflow-auto p-4 font-mono text-xs leading-relaxed">
+                    {JSON.stringify(measurement, null, 2)}
+                  </pre>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border bg-muted/30">
+                          <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                            Code
+                          </th>
+                          <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                            Parameter
+                          </th>
+                          <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                            Value
+                          </th>
+                          <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                            Unit
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {measurement.parameters.map((param, idx) => (
+                          <tr
+                            key={param.parameterCode + idx}
+                            className="border-b border-border/50 transition-colors last:border-0 hover:bg-muted/30"
+                          >
+                            <td className="px-4 py-2.5">
+                              <span className="inline-flex rounded bg-primary/10 px-1.5 py-0.5 font-mono text-xs font-medium text-primary">
+                                {param.parameterCode}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-foreground">
+                              {param.parameterName || param.parameterCode}
+                            </td>
+                            <td className="px-4 py-2.5 text-right font-mono tabular-nums text-foreground">
+                              {typeof param.value === 'number'
+                                ? param.value.toLocaleString()
+                                : param.value}
+                            </td>
+                            <td className="px-4 py-2.5 text-muted-foreground">
+                              {param.unit || '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Import actions */}
+              <div className="flex flex-wrap items-center gap-3">
+                <Button onClick={() => void importMeasurement()} disabled={busy}>
+                  {busy ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Save size={14} strokeWidth={1.5} />
+                  )}
+                  Save measurement
+                </Button>
+                <Button variant="outline" onClick={() => navigate('/dashboard')}>
+                  Back to dashboard
+                </Button>
+              </div>
+
+              {/* Success state */}
+              {createdMeasurementId && (
+                <div className="flex items-center gap-2 rounded-[6px] border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+                  <CheckCircle2 size={16} strokeWidth={1.5} className="text-emerald-600" />
+                  <p className="text-sm text-emerald-700">
+                    Measurement saved — ID:{' '}
+                    <span className="font-mono">{createdMeasurementId}</span>
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Error banner */}
+          {message && (
+            <div className="rounded-[6px] border border-destructive/30 bg-destructive/10 px-4 py-3">
+              <p className="text-sm text-destructive">{message}</p>
+            </div>
+          )}
+        </div>
       ) : null}
+
       {selectedMethod === 'map' ? (
         <PlaceholderPanel
           title="GemStat Map"
