@@ -1,0 +1,5 @@
+EPICS/
+epics & dataset/
+**/__pycache__/
+*.pyc
+server/.env
