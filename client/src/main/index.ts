@@ -26,6 +26,23 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  ipcMain.handle('window:minimize', () => {
+    mainWindow.minimize()
+  })
+
+  ipcMain.handle('window:toggle-maximize', () => {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize()
+    } else {
+      mainWindow.maximize()
+    }
+    return mainWindow.isMaximized()
+  })
+
+  ipcMain.handle('window:close', () => {
+    mainWindow.close()
+  })
+
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {

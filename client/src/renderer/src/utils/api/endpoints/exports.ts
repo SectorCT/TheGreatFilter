@@ -11,7 +11,7 @@ const isDownloadUrlJson = (value: unknown): value is DownloadUrlJson => {
 }
 
 const parseExportResponse = async (
-  response: Response,
+  response: Response
 ): Promise<ExportGeneratedFilterCsvResponse> => {
   const contentType = response.headers.get('content-type') ?? ''
   if (contentType.includes('text/csv')) {
@@ -29,7 +29,7 @@ const parseExportResponse = async (
 }
 
 export const exportFilterCsv = async (
-  filterId: string,
+  filterId: string
 ): Promise<ExportGeneratedFilterCsvResponse> => {
   return makeAuthenticatedReq<undefined, ExportGeneratedFilterCsvResponse>({
     method: 'GET',
@@ -39,8 +39,7 @@ export const exportFilterCsv = async (
     parseResponse: parseExportResponse,
     fake404: () => ({
       kind: 'downloadUrl',
-      downloadUrl: `https://example.com/fake/filter-${filterId}.csv`,
-    }),
+      downloadUrl: `https://example.com/fake/filter-${filterId}.csv`
+    })
   })
 }
-

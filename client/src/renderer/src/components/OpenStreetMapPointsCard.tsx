@@ -23,7 +23,7 @@ type RenderPoint = {
 
 const getDefaultCenter = (points: GemstatLocation[]): [number, number] => {
   const first = points.find(
-    (p) => typeof p.latitude === 'number' && typeof p.longitude === 'number',
+    (p) => typeof p.latitude === 'number' && typeof p.longitude === 'number'
   )
   return first ? [first.latitude, first.longitude] : [42.6977, 23.3219]
 }
@@ -51,15 +51,11 @@ const getBoundsExpression = (points: GemstatLocation[]): LatLngBoundsExpression 
 
   return [
     [minLat, minLon],
-    [maxLat, maxLon],
+    [maxLat, maxLon]
   ]
 }
 
-function FitPointsBounds({
-  points,
-}: {
-  points: GemstatLocation[]
-}): null {
+function FitPointsBounds({ points }: { points: GemstatLocation[] }): null {
   const map = useMap()
 
   useEffect(() => {
@@ -82,14 +78,14 @@ const getWrappedRenderPoints = (points: GemstatLocation[]): RenderPoint[] => {
     copies.push(
       { key: `${p.locationId}-w-1`, lat, lon: lon - 360, source: p },
       { key: `${p.locationId}-w0`, lat, lon, source: p },
-      { key: `${p.locationId}-w1`, lat, lon: lon + 360, source: p },
+      { key: `${p.locationId}-w1`, lat, lon: lon + 360, source: p }
     )
   }
   return copies
 }
 
 export default function OpenStreetMapPointsCard({
-  points,
+  points
 }: OpenStreetMapPointsCardProps): React.JSX.Element {
   const safePoints = points ?? []
   const center = useMemo(() => getDefaultCenter(safePoints), [safePoints])
@@ -107,7 +103,7 @@ export default function OpenStreetMapPointsCard({
         maxZoom={18}
         maxBounds={[
           [-85, -180],
-          [85, 180],
+          [85, 180]
         ]}
         maxBoundsViscosity={1.0}
         worldCopyJump={true}
@@ -127,7 +123,7 @@ export default function OpenStreetMapPointsCard({
             load: () => {
               // Tile layer triggers `load` repeatedly; we only care that at least one succeeded.
               setTilesLoading(false)
-            },
+            }
           }}
         />
 
@@ -145,7 +141,7 @@ export default function OpenStreetMapPointsCard({
             divIcon({
               html: `<div style="background:#e54a2f;color:white;border:2px solid rgba(0,0,0,0.35);border-radius:999px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">${cluster.getChildCount()}</div>`,
               className: 'tgif-cluster-icon',
-              iconSize: point(34, 34, true),
+              iconSize: point(34, 34, true)
             })
           }
         >
@@ -156,7 +152,7 @@ export default function OpenStreetMapPointsCard({
               icon={divIcon({
                 html: '<div style="width:8px;height:8px;background:#ff5a3c;border:1px solid rgba(0,0,0,0.55);border-radius:999px;"></div>',
                 className: 'tgif-point-icon',
-                iconSize: point(8, 8, true),
+                iconSize: point(8, 8, true)
               })}
             >
               <Popup>{getPopupText(p.source) || p.source.locationId}</Popup>
@@ -164,9 +160,7 @@ export default function OpenStreetMapPointsCard({
           ))}
         </MarkerClusterGroup>
       </MapContainer>
-      {tilesLoading && !tilesFailed ? (
-        <FullscreenLoadingScreen title="Loading map tiles…" />
-      ) : null}
+      {tilesLoading && !tilesFailed ? <FullscreenLoadingScreen title="Loading map tiles…" /> : null}
       {tilesFailed ? (
         <div
           style={{
@@ -177,7 +171,7 @@ export default function OpenStreetMapPointsCard({
             borderRadius: 10,
             background: 'rgba(0,0,0,0.6)',
             color: 'white',
-            fontSize: 12,
+            fontSize: 12
           }}
         >
           OSM tiles failed to load. Showing markers only.
@@ -186,4 +180,3 @@ export default function OpenStreetMapPointsCard({
     </div>
   )
 }
-

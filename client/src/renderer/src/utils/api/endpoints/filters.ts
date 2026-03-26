@@ -3,11 +3,11 @@ import {
   type FilterDetailsSuccessResponse,
   type FilterStatusRefreshResponse,
   type GenerateFilterRequest,
-  type GenerateFilterResponse,
+  type GenerateFilterResponse
 } from '../types'
 
 export const generateFilter = async (
-  request: GenerateFilterRequest,
+  request: GenerateFilterRequest
 ): Promise<GenerateFilterResponse> => {
   return makeAuthenticatedReq<GenerateFilterRequest, GenerateFilterResponse>({
     method: 'POST',
@@ -16,14 +16,12 @@ export const generateFilter = async (
     authRequired: true,
     fake404: () => ({
       filterId: `fake-filter-${Date.now()}`,
-      status: 'Pending',
-    }),
+      status: 'Pending'
+    })
   })
 }
 
-export const getFilterStatus = async (
-  filterId: string,
-): Promise<FilterStatusRefreshResponse> => {
+export const getFilterStatus = async (filterId: string): Promise<FilterStatusRefreshResponse> => {
   return makeAuthenticatedReq<undefined, FilterStatusRefreshResponse>({
     method: 'GET',
     path: `/filters/${filterId}/status`,
@@ -31,14 +29,12 @@ export const getFilterStatus = async (
     fake404: () => ({
       filterId,
       status: 'Generating',
-      updatedAt: new Date().toISOString(),
-    }),
+      updatedAt: new Date().toISOString()
+    })
   })
 }
 
-export const getFilterDetails = async (
-  filterId: string,
-): Promise<FilterDetailsSuccessResponse> => {
+export const getFilterDetails = async (filterId: string): Promise<FilterDetailsSuccessResponse> => {
   return makeAuthenticatedReq<undefined, FilterDetailsSuccessResponse>({
     method: 'GET',
     path: `/filters/${filterId}`,
@@ -49,9 +45,8 @@ export const getFilterDetails = async (
       createdAt: new Date().toISOString(),
       filterInfo: {
         // Opaque object; the UI will interpret it later.
-        summary: 'Fake filter details for development',
-      },
-    }),
+        summary: 'Fake filter details for development'
+      }
+    })
   })
 }
-

@@ -10,8 +10,8 @@ export const login = async (request: LoginRequest): Promise<AuthResponse> => {
     authRequired: false,
     fake404: () => ({
       token: 'fake-dev-access-token',
-      user: { userId: 'fake-user-id', email: request.email },
-    }),
+      user: { userId: 'fake-user-id', email: request.email }
+    })
   })
 
   setAccessToken(response.token)
@@ -26,11 +26,10 @@ export const signup = async (request: SignupRequest): Promise<AuthResponse> => {
     authRequired: false,
     fake404: () => ({
       token: 'fake-dev-access-token',
-      user: { userId: 'fake-user-id', email: request.email },
-    }),
+      user: { userId: 'fake-user-id', email: request.email }
+    })
   })
 
   setAccessToken(response.token)
   return response
 }
-
