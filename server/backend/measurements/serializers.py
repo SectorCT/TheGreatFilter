@@ -57,6 +57,22 @@ class WaterMeasurementListSerializer(serializers.ModelSerializer):
         ]
 
 
+class WaterMeasurementOptionSerializer(serializers.ModelSerializer):
+    measurementId = serializers.UUIDField(source="id", read_only=True)
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+
+    class Meta:
+        model = WaterMeasurement
+        fields = [
+            "measurementId",
+            "name",
+            "source",
+            "createdAt",
+            "temperature",
+            "ph",
+        ]
+
+
 class WaterMeasurementDetailSerializer(serializers.ModelSerializer):
     measurementId = serializers.UUIDField(source="id", read_only=True)
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
@@ -143,6 +159,38 @@ class WaterMeasurementMapSerializer(serializers.ModelSerializer):
 
     def get_longitude(self, obj):
         return obj.sample_location.get("longitude")
+
+
+class WaterMeasurementLocationSerializer(serializers.Serializer):
+    locationId = serializers.CharField()
+    name = serializers.CharField(allow_null=True)
+    source = serializers.CharField()
+    latitude = serializers.FloatField()
+    longitude = serializers.FloatField()
+    measurementCount = serializers.IntegerField()
+    latestMeasurementId = serializers.UUIDField(allow_null=True)
+    latestSampleDate = serializers.DateField(allow_null=True)
+    latestSampleTime = serializers.TimeField(allow_null=True)
+    sampleLocation = serializers.JSONField()
+
+
+class WaterMeasurementLocationMeasurementSerializer(serializers.ModelSerializer):
+    measurementId = serializers.UUIDField(source="id", read_only=True)
+    sampleDate = serializers.DateField(source="sample_date", read_only=True)
+    sampleTime = serializers.TimeField(source="sample_time", read_only=True)
+    parameterCount = serializers.IntegerField(source="parameter_count", read_only=True)
+
+    class Meta:
+        model = WaterMeasurement
+        fields = [
+            "measurementId",
+            "name",
+            "sampleDate",
+            "sampleTime",
+            "temperature",
+            "ph",
+            "parameterCount",
+        ]
 
 
 class CsvImportUploadSerializer(serializers.Serializer):

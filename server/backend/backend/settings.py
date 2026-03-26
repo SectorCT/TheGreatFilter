@@ -157,3 +157,6 @@ CELERY_TASK_ROUTES = {
 }
 
 CORS_ALLOW_ALL_ORIGINS = True
+
+# Core simulation service
+CORE_SERVICE_URL = os.getenv("CORE_SERVICE_URL", "http://core:8000")

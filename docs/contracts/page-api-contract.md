@@ -131,11 +131,11 @@ Response:
 ```
 
 ### 3.2 Measurements
-#### Create measurement (single endpoint for all sources): `POST /measurements`
+#### Create measurement (manual/lab/map sources): `POST /measurements`
 Request:
 ```json
 {
-  "source": "manual|lab_equipment|gemstat|csv_import",
+  "source": "manual|lab_equipment|gemstat",
   "temperature": "number",
   "ph": "number",
   "parameters": [ { "file":"string", "parameterCode":"string", "parameterName":"string", "unit":"string", "value":"number" } ]
@@ -145,6 +145,21 @@ Response:
 ```json
 { "measurementId": "string" }
 ```
+
+#### Import measurement from CSV (multipart upload): `POST /measurements/import/csv/`
+Request (`multipart/form-data`):
+- `file` (required): CSV file.
+- `name` (optional): user-friendly measurement label.
+
+Response:
+```json
+{ "measurementId": "string" }
+```
+
+Validation rules:
+- Required measurement fields after parsing: `temperature`, `ph`.
+- Optional fields: all other parameters/metadata.
+- If required fields are missing, backend returns validation errors and measurement is not created.
 
 #### Map snapshot lookup (GemStat): `GET /gemstat/snapshots`
 Used by the map-based measurement selection page.
