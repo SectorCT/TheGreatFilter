@@ -114,6 +114,9 @@ export function ManualEntryPanel(): React.JSX.Element {
   const isPhValid = phNumber === null || (Number.isFinite(phNumber) && phNumber >= 0 && phNumber <= 14)
 
   const buildPayload = () => {
+    const now = new Date()
+    const sampleDate = now.toISOString().slice(0, 10)
+    const sampleTime = now.toTimeString().slice(0, 8)
     const extraRows = rows
       .map((row) => {
         const preset = presetsByKey[row.presetKey]
@@ -158,6 +161,8 @@ export function ManualEntryPanel(): React.JSX.Element {
     return {
       name: measurementName.trim() || undefined,
       source: 'manual' as const,
+      sampleDate,
+      sampleTime,
       temperature: t,
       ph: Number(ph),
       parameters: [...requiredRows, ...extraRows],

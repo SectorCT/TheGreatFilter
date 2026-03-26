@@ -210,8 +210,11 @@ export function UsbEntryPanel({ onBack }: { onBack: () => void }): React.JSX.Ele
     setBusy(true)
     setMessage('')
     try {
+      const now = new Date()
       const result = await createMeasurement({
         source: measurement.source,
+        sampleDate: now.toISOString().slice(0, 10),
+        sampleTime: now.toTimeString().slice(0, 8),
         temperature: measurement.temperature,
         ph: measurement.ph,
         parameters: measurement.parameters,

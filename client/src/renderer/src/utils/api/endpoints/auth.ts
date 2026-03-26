@@ -1,5 +1,5 @@
 import { makeAuthenticatedReq } from '../makeAuthenticatedReq'
-import { clearAccessToken, setAccessToken, setRefreshToken } from '../authTokenStore'
+import { clearAccessToken, getRefreshToken, setAccessToken, setRefreshToken } from '../authTokenStore'
 import { type AuthResponse, type LoginRequest, type SignupRequest } from '../types'
 
 type RawAuthResponse = Partial<AuthResponse> & {
@@ -79,9 +79,11 @@ export const signup = async (request: SignupRequest): Promise<AuthResponse> => {
   return response
 }
 export const logout = async (): Promise<void> => {
-  await makeAuthenticatedReq<undefined, { success?: boolean }>({
+  const refresh = getRefreshToken()
+  await makeAuthenticatedReq<{ refresh: string }, { success?: boolean }>({
     method: 'POST',
     path: '/api/auth/logout/',
+    body: { refresh: refresh ?? '' },
     authRequired: true,
     fake404: { success: true }
   })
