@@ -24,7 +24,8 @@ export type FilterInfoViewModel = {
   }
   parameterBarData: Array<{ name: string; code: string; value: number; unit: string }>
   parameterRadarData: Array<{ parameter: string; value: number }>
-  atomPositions: Array<{ x: number; y: number; z: number; element: string }>
+  atomPositions: Array<{ id: string; x: number; y: number; z: number; element: string }>
+  atomConnections: Array<{ from: string; to: string; order: number }>
 }
 
 const safeNumber = (value: unknown): number | null =>
@@ -62,19 +63,39 @@ export const buildFilterInfoViewModel = (info: FilterInfo | null | undefined): F
   }))
 
   const rawAtoms = info?.filterStructure?.atomPositions ?? []
-  const atomPositions = rawAtoms.filter(
-    (a) =>
-      safeNumber(a?.x) !== null &&
-      safeNumber(a?.y) !== null &&
-      safeNumber(a?.z) !== null &&
-      typeof a?.element === 'string'
-  )
+  const atomPositions = rawAtoms
+    .map((a, index) => {
+      const x = safeNumber(a?.x)
+      const y = safeNumber(a?.y)
+      const z = safeNumber(a?.z)
+      if (x === null || y === null || z === null || typeof a?.element !== 'string') return null
+      return {
+        id: String(a.id ?? index),
+        x,
+        y,
+        z,
+        element: a.element
+      }
+    })
+    .filter((a): a is { id: string; x: number; y: number; z: number; element: string } => a !== null)
+  const atomIdSet = new Set(atomPositions.map((a) => a.id))
+  const rawConnections = info?.filterStructure?.connections ?? []
+  const atomConnections = rawConnections
+    .map((connection) => {
+      const from = String(connection.from)
+      const to = String(connection.to)
+      if (!atomIdSet.has(from) || !atomIdSet.has(to) || from === to) return null
+      const order = safeNumber(connection.order) ?? 1
+      return { from, to, order: Math.max(1, Math.round(order)) }
+    })
+    .filter((c): c is { from: string; to: string; order: number } => c !== null)
 
   return {
     params,
     parameterBarData,
     parameterRadarData,
     atomPositions,
+    atomConnections,
     metrics: {
       materialType: safeString(info?.filterStructure?.materialType ?? info?.summaryMetrics?.materialType),
       poreSize: safeNumber(info?.filterStructure?.poreSize),

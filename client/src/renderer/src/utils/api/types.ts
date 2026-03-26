@@ -243,7 +243,8 @@ export type FilterInfo = {
     layerThickness?: number
     latticeSpacing?: number
     materialType?: string
-    atomPositions?: Array<{ x: number; y: number; z: number; element: string }>
+    atomPositions?: Array<{ id?: string | number; x: number; y: number; z: number; element: string }>
+    connections?: Array<{ from: string | number; to: string | number; order?: number }>
   }
   experimentPayload?: {
     measurement_id?: string

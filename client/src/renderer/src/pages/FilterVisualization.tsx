@@ -23,6 +23,14 @@ type ClickableAtom = {
   y: number
   z: number
 }
+type ModelAtom = {
+  elem: string
+  x: number
+  y: number
+  z: number
+  bonds: number[]
+  bondOrder: number[]
+}
 
 const BASE_ELEMENTS = ['C', 'N', 'O', 'S', 'H'] as const
 
@@ -48,6 +56,22 @@ function buildRandomMoleculeXYZ(seed: number): string {
   return `${atomCount}
 Stress test random structure
 ${atoms.join('\n')}`
+}
+
+function downsampleXyz(xyz: string, maxAtoms: number): string {
+  const lines = xyz.split('\n')
+  const declaredCount = Number(lines[0] ?? 0)
+  if (!Number.isFinite(declaredCount) || declaredCount <= 0) return xyz
+  if (declaredCount <= maxAtoms) return xyz
+
+  const headerLine = lines[1] ?? 'Generated structure'
+  const atomLines = lines.slice(2)
+  const step = Math.ceil(declaredCount / maxAtoms)
+  const sampled: string[] = []
+  for (let i = 0; i < atomLines.length; i += step) {
+    sampled.push(atomLines[i])
+  }
+  return `${sampled.length}\n${headerLine} (downsampled)\n${sampled.join('\n')}`
 }
 
 export function FilterVisualization(): React.JSX.Element {
@@ -85,11 +109,40 @@ export function FilterVisualization(): React.JSX.Element {
 
   const vm = useMemo(() => buildFilterInfoViewModel(filterInfo), [filterInfo])
   const usingRealStructure = vm.atomPositions.length > 0
-  const xyz = useMemo(
+  const hasExplicitConnections = vm.atomConnections.length > 0
+  const rawXyz = useMemo(
     () => (usingRealStructure ? atomPositionsToXyz(vm.atomPositions) : buildRandomMoleculeXYZ(seed)),
     [seed, usingRealStructure, vm.atomPositions]
   )
+  const rawAtomCount = useMemo(() => Number(rawXyz.split('\n')[0] ?? 0), [rawXyz])
+  const xyz = useMemo(
+    () => (hasExplicitConnections ? rawXyz : downsampleXyz(rawXyz, 500)),
+    [rawXyz, hasExplicitConnections]
+  )
   const atomCount = useMemo(() => Number(xyz.split('\n')[0] ?? 0), [xyz])
+  const isDownsampled = rawAtomCount > atomCount
+  const modelAtoms = useMemo(() => {
+    if (!hasExplicitConnections) return null
+    const indexById = new Map(vm.atomPositions.map((atom, index) => [atom.id, index]))
+    const atoms: ModelAtom[] = vm.atomPositions.map((atom) => ({
+      elem: atom.element,
+      x: atom.x,
+      y: atom.y,
+      z: atom.z,
+      bonds: [],
+      bondOrder: []
+    }))
+    for (const connection of vm.atomConnections) {
+      const fromIndex = indexById.get(connection.from)
+      const toIndex = indexById.get(connection.to)
+      if (fromIndex == null || toIndex == null) continue
+      atoms[fromIndex].bonds.push(toIndex)
+      atoms[fromIndex].bondOrder.push(connection.order)
+      atoms[toIndex].bonds.push(fromIndex)
+      atoms[toIndex].bondOrder.push(connection.order)
+    }
+    return atoms
+  }, [hasExplicitConnections, vm.atomConnections, vm.atomPositions])
 
   useEffect(() => {
     if (loading) return
@@ -98,8 +151,19 @@ export function FilterVisualization(): React.JSX.Element {
     const viewer = $3Dmol.createViewer(containerRef.current, {
       backgroundColor: '#0b0f17'
     })
-    viewer.addModel(xyz, 'xyz')
-    viewer.setStyle({}, { stick: { radius: 0.16 }, sphere: { scale: 0.29 } })
+    if (modelAtoms) {
+      const model = viewer.addModel()
+      model.addAtoms(modelAtoms)
+    } else {
+      viewer.addModel(xyz, 'xyz')
+    }
+    if (atomCount > 1400) {
+      viewer.setStyle({}, { sphere: { scale: 0.16 } })
+    } else if (atomCount > 700) {
+      viewer.setStyle({}, { sphere: { scale: 0.24 } })
+    } else {
+      viewer.setStyle({}, { stick: { radius: 0.16 }, sphere: { scale: 0.29 } })
+    }
     viewer.setClickable({}, true, (atom: ClickableAtom) => {
       const atomIndex = typeof atom?.serial === 'number' ? atom.serial : (atom?.index ?? '?')
       const targets = Array.isArray(atom?.bonds) ? atom.bonds.slice(0, 8).join(', ') : 'None'
@@ -121,7 +185,6 @@ export function FilterVisualization(): React.JSX.Element {
       viewer.render()
     })
     viewer.zoomTo()
-    viewer.zoom(1.2, 300)
     viewer.render()
 
     const onResize = (): void => {
@@ -137,7 +200,7 @@ export function FilterVisualization(): React.JSX.Element {
       window.removeEventListener('resize', onResize)
       viewer.clear()
     }
-  }, [xyz, loading])
+  }, [xyz, loading, atomCount, modelAtoms])
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden p-4 md:p-6 lg:p-8">
@@ -195,7 +258,9 @@ export function FilterVisualization(): React.JSX.Element {
             ) : (
               <p className="text-sm text-muted-foreground">
                 {usingRealStructure
-                  ? 'Structure loaded from backend atomPositions. Click any atom in the 3D view to inspect its element and connectivity.'
+                  ? hasExplicitConnections
+                    ? 'Structure loaded from backend atoms + explicit connections. Click any atom in the 3D view to inspect its element and connectivity.'
+                    : 'Structure loaded from backend atomPositions. Click any atom in the 3D view to inspect its element and connectivity.'
                   : 'Backend atomPositions were missing, so a generated fallback structure is shown. Click any atom in the 3D view to inspect it.'}
               </p>
             )}
@@ -228,6 +293,17 @@ export function FilterVisualization(): React.JSX.Element {
           <div className="space-y-1 text-sm text-muted-foreground">
             <p>
               Atoms: <span className="font-mono text-foreground">{atomCount}</span>
+              {isDownsampled ? (
+                <span className="ml-2 font-mono text-[11px] text-muted-foreground">
+                  (from {rawAtomCount}, perf mode)
+                </span>
+              ) : null}
+            </p>
+            <p>
+              Connections:{' '}
+              <span className="font-mono text-foreground">
+                {hasExplicitConnections ? vm.atomConnections.length : 'inferred'}
+              </span>
             </p>
             <p>
               Structure:{' '}
