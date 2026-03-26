@@ -18,7 +18,7 @@ type JsonValue = Record<string, unknown> | unknown[] | string | number | boolean
 type QueryValue = string | number | boolean | undefined | null
 
 export type MakeAuthenticatedReqArgs<Req, Res> = {
-  method: 'GET' | 'POST'
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE'
   path: string // e.g. '/auth/login'
   query?: Record<string, QueryValue>
   body?: Req
@@ -58,7 +58,7 @@ const buildQuery = (query: Record<string, QueryValue> | undefined): string => {
 }
 
 export const makeAuthenticatedReq = async <Req, Res>(
-  args: MakeAuthenticatedReqArgs<Req, Res>,
+  args: MakeAuthenticatedReqArgs<Req, Res>
 ): Promise<Res> => {
   const {
     method,
@@ -67,16 +67,18 @@ export const makeAuthenticatedReq = async <Req, Res>(
     body,
     authRequired = true,
     parseResponse = defaultParseJson<Res>,
-    fake404,
+    fake404
   } = args
 
   const url = `${apiUrl(path)}${buildQuery(query)}`
 
   const headers: Record<string, string> = {
-    Accept: 'application/json',
+    Accept: 'application/json'
   }
 
-  if (body !== undefined) {
+  const isFormDataBody = typeof FormData !== 'undefined' && body instanceof FormData
+
+  if (body !== undefined && !isFormDataBody) {
     headers['Content-Type'] = 'application/json'
   }
 
@@ -88,18 +90,17 @@ export const makeAuthenticatedReq = async <Req, Res>(
   const response = await fetch(url, {
     method,
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body:
+      body !== undefined ? (isFormDataBody ? (body as BodyInit) : JSON.stringify(body)) : undefined
   })
 
   if (response.status === 404) {
     if (isDevMode()) {
       console.warn(
         '[DEV] API returned 404; using fake response.',
-        JSON.stringify({ method, path, query }),
+        JSON.stringify({ method, path, query })
       )
-      return typeof fake404 === 'function'
-        ? await (fake404 as () => Res | Promise<Res>)()
-        : fake404
+      return typeof fake404 === 'function' ? await (fake404 as () => Res | Promise<Res>)() : fake404
     }
     throw new ApiError(`Request failed with 404: ${method} ${path}`, 404)
   }
@@ -111,4 +112,3 @@ export const makeAuthenticatedReq = async <Req, Res>(
 
   return parseResponse(response)
 }
-

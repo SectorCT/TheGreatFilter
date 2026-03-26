@@ -3,55 +3,53 @@ import {
   type FilterDetailsSuccessResponse,
   type FilterStatusRefreshResponse,
   type GenerateFilterRequest,
-  type GenerateFilterResponse,
+  type GenerateFilterResponse
 } from '../types'
 
 export const generateFilter = async (
-  request: GenerateFilterRequest,
+  request: GenerateFilterRequest
 ): Promise<GenerateFilterResponse> => {
   return makeAuthenticatedReq<GenerateFilterRequest, GenerateFilterResponse>({
     method: 'POST',
-    path: '/filters/generate',
+    path: '/api/filters/generate/',
     body: request,
     authRequired: true,
     fake404: () => ({
       filterId: `fake-filter-${Date.now()}`,
-      status: 'Pending',
-    }),
+      status: 'Pending'
+    })
   })
 }
 
-export const getFilterStatus = async (
-  filterId: string,
-): Promise<FilterStatusRefreshResponse> => {
+export const getFilterStatus = async (filterId: string): Promise<FilterStatusRefreshResponse> => {
   return makeAuthenticatedReq<undefined, FilterStatusRefreshResponse>({
     method: 'GET',
-    path: `/filters/${filterId}/status`,
+    path: `/api/filters/${filterId}/status/`,
     authRequired: true,
     fake404: () => ({
       filterId,
       status: 'Generating',
-      updatedAt: new Date().toISOString(),
-    }),
+      updatedAt: new Date().toISOString()
+    })
   })
 }
 
-export const getFilterDetails = async (
-  filterId: string,
-): Promise<FilterDetailsSuccessResponse> => {
+export const getFilterDetails = async (filterId: string): Promise<FilterDetailsSuccessResponse> => {
   return makeAuthenticatedReq<undefined, FilterDetailsSuccessResponse>({
     method: 'GET',
-    path: `/filters/${filterId}`,
+    path: `/api/filters/${filterId}/`,
     authRequired: true,
     fake404: () => ({
       filterId,
+      studyId: `fake-study-${Date.now()}`,
+      measurementId: `fake-measurement-${Date.now()}`,
       status: 'Success',
       createdAt: new Date().toISOString(),
       filterInfo: {
-        // Opaque object; the UI will interpret it later.
-        summary: 'Fake filter details for development',
-      },
-    }),
+        summaryMetrics: {
+          summary: 'Fake filter details for development'
+        }
+      }
+    })
   })
 }
-
