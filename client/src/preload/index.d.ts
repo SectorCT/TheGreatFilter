@@ -38,10 +38,20 @@ type LabApi = {
   readMeasurement: () => Promise<DeviceMeasurementResponse>
 }
 
+type DesktopApi = {
+  window: {
+    minimize: () => Promise<void>
+    toggleMaximize: () => Promise<boolean>
+    close: () => Promise<void>
+  }
+}
+
+type Api = DesktopApi & LabApi
+
 declare global {
   interface Window {
     electron: ElectronAPI
-    api?: LabApi
-    labApi?: LabApi
+    api: Api
+    labApi: LabApi
   }
 }

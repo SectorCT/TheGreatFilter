@@ -17,4 +17,3 @@ export const refreshAccessToken = async (): Promise<string> => {
   }
   return token
 }
-

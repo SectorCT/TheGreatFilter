@@ -126,4 +126,3 @@ export type FilterDetailsSuccessResponse = {
 export type ExportGeneratedFilterCsvResponse =
   | { kind: 'csvText'; csvText: string }
   | { kind: 'downloadUrl'; downloadUrl: string }
-

@@ -1,1 +1,6 @@
 GFQA_v3/
+EPICS/
+epics & dataset/
+**/__pycache__/
+*.pyc
+server/.env

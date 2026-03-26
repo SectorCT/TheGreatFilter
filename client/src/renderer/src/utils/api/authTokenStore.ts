@@ -26,4 +26,3 @@ export const clearAccessToken = (): void => {
   inMemoryAccessToken = null
   safeGetLocalStorage()?.removeItem(ACCESS_TOKEN_KEY)
 }
-

@@ -1,4 +1,4 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
 type DeviceStatus = 'WET' | 'DRY'
@@ -31,7 +31,7 @@ type DeviceConnectionState = {
   portPath: string | null
 }
 
-const api = {
+const labApi = {
   listPorts: (): Promise<string[]> => electronAPI.ipcRenderer.invoke('lab:listPorts'),
   connectDevice: (portPath: string): Promise<DeviceConnectionState> =>
     electronAPI.ipcRenderer.invoke('lab:connect', portPath),
@@ -42,6 +42,19 @@ const api = {
     electronAPI.ipcRenderer.invoke('lab:readMeasurement')
 }
 
+const desktopApi = {
+  window: {
+    minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
+    toggleMaximize: (): Promise<boolean> => ipcRenderer.invoke('window:toggle-maximize'),
+    close: (): Promise<void> => ipcRenderer.invoke('window:close')
+  }
+}
+
+const api = {
+  ...desktopApi,
+  ...labApi
+}
+
 // Use `contextBridge` APIs to expose Electron APIs to
 // renderer only if context isolation is enabled, otherwise
 // just add to the DOM global.
@@ -49,7 +62,7 @@ if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
-    contextBridge.exposeInMainWorld('labApi', api)
+    contextBridge.exposeInMainWorld('labApi', labApi)
   } catch (error) {
     console.error(error)
   }
@@ -59,5 +72,5 @@ if (process.contextIsolated) {
   // @ts-ignore (define in dts)
   window.api = api
   // @ts-ignore (define in dts)
-  window.labApi = api
+  window.labApi = labApi
 }
