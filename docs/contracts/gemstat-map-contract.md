@@ -72,3 +72,57 @@ For each marker, the UI should be able to display (at minimum):
 - the water type
 - a map pin at (`latitude`, `longitude`)
 
+## 5. Endpoint: fetch full station measurements history (all categories + all dates)
+
+When the user clicks a location marker, the frontend must fetch **all measurement records** that belong to that station, so it can show historical/current graphs across all parameter categories and all sample dates.
+
+### `GET /gemstat/station-measurements`
+
+Query parameters:
+- `locationId=string` (derived from **GEMS Station Number**)
+
+Request:
+- No body
+
+Response:
+```json
+{
+  "locationId": "string",
+  "measurements": [
+    {
+      "sampleDate": "YYYY-MM-DD",
+      "sampleTime": "HH:mm",
+      "depth": "number|null",
+      "parameterCode": "string",
+      "analysisMethodCode": "string|null",
+      "valueFlags": "string|null",
+      "value": "number",
+      "unit": "string",
+      "dataQuality": "string|null"
+    }
+  ]
+}
+```
+
+### Dataset column mapping (from the provided semicolon-delimited dataset)
+- `GEMS Station Number` -> `locationId`
+- `Sample.Date` -> `sampleDate`
+- `Sample.Time` -> `sampleTime`
+- `Depth` -> `depth`
+- `Parameter.Code` -> `parameterCode`
+- `Analysis.Method.Code` -> `analysisMethodCode`
+- `Value.Flags` -> `valueFlags`
+- `Value` -> `value`
+- `Unit` -> `unit`
+- `Data.Quality` -> `dataQuality`
+
+### Normalization rules
+- Empty numeric fields become `null` (e.g., `depth`)
+- Empty string fields become `null` (e.g., `analysisMethodCode`, `valueFlags`, `dataQuality`)
+- Numeric parsing must support decimals with commas (e.g., `-26,925888`)
+
+### What the map UI must do with this data
+- Group rows by `parameterCode` (each parameter category becomes a time-series graph)
+- Group rows by `sampleDate` for “select a date” behavior
+- When a user picks a date, the frontend should derive the measurement payload for that date (Temperature + pH are required; other parameters are optional)
+
