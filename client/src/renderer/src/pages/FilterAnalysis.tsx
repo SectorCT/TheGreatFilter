@@ -106,6 +106,17 @@ export function FilterAnalysis(): React.JSX.Element {
   }, [vm.params, removalEfficiency])
 
   useEffect(() => {
+    if (!filterInfo) return
+    const genericDefs = moleculeDefs.filter((m) => m.formula === 'n/a').map((m) => m.code)
+    console.debug('[FilterAnalysis] molecule mapping', {
+      filterId: id,
+      totalParams: vm.params.length,
+      molecularDefs: moleculeDefs.length,
+      genericDefs
+    })
+  }, [filterInfo, id, moleculeDefs, vm.params.length])
+
+  useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || loading) return
     const ctx = canvas.getContext('2d')
