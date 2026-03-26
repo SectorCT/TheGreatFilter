@@ -1,5 +1,5 @@
 import { ArrowLeft, Download, Eye, Microscope, Play } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Bar,
@@ -21,6 +21,26 @@ import { Button } from '@renderer/components/ui/button'
 import { exportFilterCsv, getFilterDetails, getFilterStatus } from '@renderer/utils/api/endpoints'
 import { type FilterDetailsSuccessResponse, type FilterStatus } from '@renderer/utils/api/types'
 import { buildFilterInfoViewModel } from '@renderer/utils/filterInfoViewModel'
+
+function useMeasuredSize() {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const [size, setSize] = useState({ width: 0, height: 0 })
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+
+    const observer = new ResizeObserver((entries) => {
+      const cr = entries[0]?.contentRect
+      if (!cr) return
+      setSize({ width: cr.width, height: cr.height })
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  return { ref, width: size.width, height: size.height }
+}
 
 export function FilterDetails(): React.JSX.Element {
   const navigate = useNavigate()
@@ -96,6 +116,9 @@ export function FilterDetails(): React.JSX.Element {
     ],
     [view]
   )
+
+  const barSize = useMeasuredSize()
+  const radarSize = useMeasuredSize()
 
   const handleExportCsv = async (): Promise<void> => {
     if (!id || status !== 'Success') return
@@ -213,55 +236,59 @@ export function FilterDetails(): React.JSX.Element {
           <div className="grid grid-cols-1 gap-6 2xl:grid-cols-2">
             <div className="rounded-[6px] border border-border bg-card p-4">
               <h2 className="mb-2 text-sm font-semibold">Parameter Composition</h2>
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={view.parameterBarData} margin={{ top: 6, right: 12, left: 0, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="code" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
-                    <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
-                    <Tooltip
-                      formatter={(value, _name, item) => [
-                        `${String(value ?? '-')} ${((item?.payload as { unit?: string } | undefined)?.unit ?? '')}`.trim(),
-                        'Value'
-                      ]}
-                      contentStyle={{
-                        borderRadius: 8,
-                        borderColor: 'hsl(var(--border))',
-                        background: 'hsl(var(--card))'
-                      }}
-                    />
-                    <Bar dataKey="value" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+              <div ref={barSize.ref} className="h-72 w-full min-w-0">
+                {barSize.width > 0 && barSize.height > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                    <BarChart data={view.parameterBarData} margin={{ top: 6, right: 12, left: 0, bottom: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis dataKey="code" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
+                      <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
+                      <Tooltip
+                        formatter={(value, _name, item) => [
+                          `${String(value ?? '-')} ${((item?.payload as { unit?: string } | undefined)?.unit ?? '')}`.trim(),
+                          'Value'
+                        ]}
+                        contentStyle={{
+                          borderRadius: 8,
+                          borderColor: 'hsl(var(--border))',
+                          background: 'hsl(var(--card))'
+                        }}
+                      />
+                      <Bar dataKey="value" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : null}
               </div>
             </div>
 
             <div className="rounded-[6px] border border-border bg-card p-4">
               <h2 className="mb-2 text-sm font-semibold">Quality Fingerprint</h2>
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart data={view.parameterRadarData}>
-                    <PolarGrid stroke="hsl(var(--border))" />
-                    <PolarAngleAxis
-                      dataKey="parameter"
-                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                    />
-                    <PolarRadiusAxis
-                      domain={[0, 100]}
-                      tickCount={6}
-                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                    />
-                    <Radar dataKey="value" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.28} />
-                    <Tooltip
-                      formatter={(value) => [`${String(value ?? '-')}%`, 'Normalized']}
-                      contentStyle={{
-                        borderRadius: 8,
-                        borderColor: 'hsl(var(--border))',
-                        background: 'hsl(var(--card))'
-                      }}
-                    />
-                  </RadarChart>
-                </ResponsiveContainer>
+              <div ref={radarSize.ref} className="h-72 w-full min-w-0">
+                {radarSize.width > 0 && radarSize.height > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                    <RadarChart data={view.parameterRadarData}>
+                      <PolarGrid stroke="hsl(var(--border))" />
+                      <PolarAngleAxis
+                        dataKey="parameter"
+                        tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                      />
+                      <PolarRadiusAxis
+                        domain={[0, 100]}
+                        tickCount={6}
+                        tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                      />
+                      <Radar dataKey="value" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.28} />
+                      <Tooltip
+                        formatter={(value) => [`${String(value ?? '-')}%`, 'Normalized']}
+                        contentStyle={{
+                          borderRadius: 8,
+                          borderColor: 'hsl(var(--border))',
+                          background: 'hsl(var(--card))'
+                        }}
+                      />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                ) : null}
               </div>
             </div>
           </div>

@@ -14,6 +14,7 @@ import { FilterSimulation } from '@renderer/pages/FilterSimulation'
 import { Measurements } from '@renderer/pages/Measurements'
 import { MeasurementDetails } from '@renderer/pages/MeasurementDetails'
 import { AddMeasurement } from '@renderer/pages/AddMeasurement'
+import { Studies } from '@renderer/pages/Studies'
 import { NotFound } from '@renderer/pages/NotFound'
 
 function App(): React.JSX.Element {
@@ -34,6 +35,7 @@ function App(): React.JSX.Element {
             <Route path="/filters/:id/simulate" element={<FilterSimulation />} />
             <Route path="/measurements" element={<Measurements />} />
             <Route path="/measurements/:id" element={<MeasurementDetails />} />
+            <Route path="/studies" element={<Studies />} />
             <Route path="/add-measurement" element={<AddMeasurement />} />
           </Route>
           <Route path="*" element={<NotFound />} />
