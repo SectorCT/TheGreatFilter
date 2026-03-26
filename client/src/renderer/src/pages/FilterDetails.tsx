@@ -40,7 +40,7 @@ export function FilterDetails(): React.JSX.Element {
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => navigate('/filters')}
             className="rounded-[6px] p-1.5 transition-colors hover:bg-secondary"
           >
             <ArrowLeft size={16} strokeWidth={1.5} />
@@ -53,7 +53,7 @@ export function FilterDetails(): React.JSX.Element {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => navigate(`/filters/${filter.id}/visualize`)}>
             <Eye size={16} strokeWidth={1.5} />
             Visualize
           </Button>
