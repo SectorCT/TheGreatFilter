@@ -1,0 +1,4 @@
+temperature,ph,parameterCode,value
+22.0,"7.4
+broken_row_without_enough_columns
+23.1,7.1,DO,9.0,unexpected_extra_column

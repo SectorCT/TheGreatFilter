@@ -6,12 +6,14 @@ import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
 import { StatusBadge } from '@renderer/components/StatusBadge'
 import { Button } from '@renderer/components/ui/button'
 import { filterDetailParameters, filters, filterStages } from '@renderer/data/mockData'
+import { exportFilterCsv } from '@renderer/utils/api/endpoints'
 
 export function FilterDetails(): React.JSX.Element {
   const navigate = useNavigate()
   const { id } = useParams()
   const filter = useMemo(() => filters.find((item) => item.id === id) ?? filters[0], [id])
   const [simRunning, setSimRunning] = useState(false)
+  const [csvExporting, setCsvExporting] = useState(false)
   const [bindingEnergy, setBindingEnergy] = useState(-18.4)
   const [porosity] = useState(0.82)
   const [convergence, setConvergence] = useState<number[]>([-5, -8, -10.5, -12.9, -15.1, -16.4])
@@ -32,6 +34,42 @@ export function FilterDetails(): React.JSX.Element {
       setSimRunning(false)
       toast.success(`Quantum Simulation Complete: ${Math.max(84, affinity)}% Efficiency Predicted`)
     }, 1800)
+  }
+
+  const canExportCsv = filter.status === 'Success' || filter.status === 'Complete'
+
+  const triggerCsvDownload = (csvText: string, filename: string): void => {
+    const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' })
+    const objectUrl = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = objectUrl
+    anchor.download = filename
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(objectUrl)
+  }
+
+  const handleExportCsv = async (): Promise<void> => {
+    if (!canExportCsv || !filter.id) {
+      toast.error('CSV export is available only for successful filters.')
+      return
+    }
+
+    setCsvExporting(true)
+    try {
+      const response = await exportFilterCsv(filter.id)
+      if (response.kind === 'csvText') {
+        triggerCsvDownload(response.csvText, `filter-${filter.id}.csv`)
+      } else {
+        window.open(response.downloadUrl, '_blank', 'noopener,noreferrer')
+      }
+      toast.success('CSV export started.')
+    } catch (error) {
+      toast.error(`CSV export failed: ${String(error)}`)
+    } finally {
+      setCsvExporting(false)
+    }
   }
 
   return (
@@ -57,9 +95,13 @@ export function FilterDetails(): React.JSX.Element {
             <Eye size={16} strokeWidth={1.5} />
             Visualize
           </Button>
-          <Button variant="outline">
+          <Button
+            variant="outline"
+            onClick={() => void handleExportCsv()}
+            disabled={!canExportCsv || csvExporting}
+          >
             <Download size={16} strokeWidth={1.5} />
-            Export CSV
+            {csvExporting ? 'Exporting...' : 'Export CSV'}
           </Button>
         </div>
       </div>

@@ -55,19 +55,25 @@ export const getMeasurementsMap = async (): Promise<MeasurementMapResponse> => {
   })
 }
 
-export const importMeasurementCsv = async (
-  file: File,
+export type ImportMeasurementCsvRequest = {
+  file: File
   name?: string
+}
+
+export const importMeasurementCsv = async (
+  request: ImportMeasurementCsvRequest
 ): Promise<MeasurementCreateResponse> => {
   const formData = new FormData()
-  formData.append('file', file)
-  if (name) formData.append('name', name)
+  formData.append('file', request.file)
+  if (request.name?.trim()) {
+    formData.append('name', request.name.trim())
+  }
 
   return makeAuthenticatedReq<FormData, MeasurementCreateResponse>({
     method: 'POST',
     path: '/api/measurements/import/csv/',
     body: formData,
     authRequired: true,
-    fake404: { measurementId: `fake-csv-measurement-${Date.now()}` }
+    fake404: { measurementId: `fake-measurement-${Date.now()}` }
   })
 }
