@@ -10,7 +10,6 @@ import { FilterDetails } from '@renderer/pages/FilterDetails'
 import { Measurements } from '@renderer/pages/Measurements'
 import { AddMeasurement } from '@renderer/pages/AddMeasurement'
 import { NotFound } from '@renderer/pages/NotFound'
-
 function App(): React.JSX.Element {
   return (
     <TooltipProvider>
