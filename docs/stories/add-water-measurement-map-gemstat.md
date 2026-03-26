@@ -17,6 +17,7 @@
 ### What the page must do (high-level)
 - When a user selects location + date, the app fetches the latest available snapshot for that selection.
 - The selection is converted into a measurement payload (Temperature, pH, and optional parameters) and sent as JSON to `POST /measurements` with `source = "gemstat"`.
+- When the user opens the map page, the app must first fetch **all GemStat locations** (including name/country/type and coordinates) to render markers.
 
 ## Page-to-Page Contract (Navigation)
 - `GemStat Map` -> `Dashboard` after measurement is created/available for selection.
@@ -24,6 +25,7 @@
 
 ## Required Backend Contract (Minimal)
 See `docs/contracts/page-api-contract.md`:
+- `GET /gemstat/locations` (fetch all markers metadata for the map UI)
 - `GET /gemstat/snapshots` (by `locationId` and `date`)
 - `POST /measurements` with `source = "gemstat"` to create the selected measurement from the fetched snapshot
 

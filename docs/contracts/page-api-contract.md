@@ -20,6 +20,9 @@ The goal is to make page behavior unambiguous while keeping the internal filter 
   - `GET /measurements/map`
   - `GET /measurements/import/csv`
 
+- Map locations metadata (used by the map-based measurement selection page):
+  - `GET /gemstat/locations` (fetch all locations)
+
 - Filter generation flows:
   - `POST /filters/generate` (triggered from the dashboard “Generate filter” action)
   - `GET /filters/{filterId}` (filter details + visualization entry point)
@@ -144,6 +147,14 @@ Response:
 ```json
 { "measurement": { /* Measurement shape */ } }
 ```
+
+#### Map locations metadata: `GET /gemstat/locations`
+Used when the user opens the map so the UI can render all markers and labels.
+Response:
+```json
+{ "locations": [ /* Location metadata objects */ ] }
+```
+For the exact shape, see `docs/contracts/gemstat-map-contract.md`.
 
 ### 3.3 Filter Generation
 #### Trigger generation: `POST /filters/generate`
