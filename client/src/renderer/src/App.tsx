@@ -9,6 +9,7 @@ import { Filters } from '@renderer/pages/Filters'
 import { FilterDetails } from '@renderer/pages/FilterDetails'
 import { FilterVisualization } from '@renderer/pages/FilterVisualization'
 import { Measurements } from '@renderer/pages/Measurements'
+import { MeasurementDetails } from '@renderer/pages/MeasurementDetails'
 import { AddMeasurement } from '@renderer/pages/AddMeasurement'
 import { NotFound } from '@renderer/pages/NotFound'
 
@@ -26,6 +27,7 @@ function App(): React.JSX.Element {
             <Route path="/filters/:id" element={<FilterDetails />} />
             <Route path="/filters/:id/visualize" element={<FilterVisualization />} />
             <Route path="/measurements" element={<Measurements />} />
+            <Route path="/measurements/:id" element={<MeasurementDetails />} />
             <Route path="/add-measurement" element={<AddMeasurement />} />
           </Route>
           <Route path="*" element={<NotFound />} />

@@ -66,15 +66,14 @@ export function Dashboard(): React.JSX.Element {
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: 'Total Filters', value: '5', trend: '+2 this week', Icon: FlaskConical },
+          { label: 'Total Filters', value: '-5', trend: '-2 this week', Icon: FlaskConical },
           {
             label: 'Measurements',
             value: String(measurementCount),
-            trend: measurementCount > 0 ? 'Connected to backend' : 'No measurements yet',
             Icon: Droplets
           },
-          { label: 'In Progress', value: '2', Icon: Clock },
-          { label: 'Completed', value: '3', Icon: FlaskConical }
+          { label: 'In Progress', value: '-2', Icon: Clock },
+          { label: 'Completed', value: '-3', Icon: FlaskConical }
         ].map(({ label, value, trend, Icon }) => (
           <div key={label} className="rounded-[6px] border border-border bg-card p-4">
             <div className="mb-2 flex items-center justify-between">

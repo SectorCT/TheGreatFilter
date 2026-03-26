@@ -72,7 +72,6 @@ export function Measurements(): React.JSX.Element {
           <table className="min-w-[980px] w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-table-header text-left">
-                <th className="px-4 py-2.5 font-medium text-muted-foreground">ID</th>
                 <th className="px-4 py-2.5 font-medium text-muted-foreground">Label</th>
                 <th className="px-4 py-2.5 font-medium text-muted-foreground">Source</th>
                 <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">pH</th>
@@ -89,7 +88,7 @@ export function Measurements(): React.JSX.Element {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-muted-foreground">
                     Loading measurements...
                   </td>
                 </tr>
@@ -97,7 +96,7 @@ export function Measurements(): React.JSX.Element {
 
               {!isLoading && error ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-sm text-destructive">
+                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-destructive">
                     {error}
                   </td>
                 </tr>
@@ -105,7 +104,7 @@ export function Measurements(): React.JSX.Element {
 
               {!isLoading && !error && items.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-muted-foreground">
                     No measurements yet. Add one to get started.
                   </td>
                 </tr>
@@ -116,12 +115,9 @@ export function Measurements(): React.JSX.Element {
                 items.map((item) => (
                 <tr
                   key={item.measurementId}
-                  onClick={() => navigate('/add-measurement')}
+                  onClick={() => navigate(`/measurements/${item.measurementId}`)}
                   className="cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-table-row-hover"
                 >
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                    {item.measurementId}
-                  </td>
                   <td className="px-4 py-3 font-medium">{item.name ?? 'Untitled measurement'}</td>
                   <td className="px-4 py-3">{humanizeSource(item.source)}</td>
                   <td className="px-4 py-3 text-right font-mono text-xs">{item.ph.toFixed(2)}</td>
