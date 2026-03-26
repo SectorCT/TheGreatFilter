@@ -76,6 +76,7 @@ function GemstatMapPanel(): React.JSX.Element {
       try {
         const result = await getGemstatLocations()
         if (cancelled) return
+        console.info('[Map] Loaded locations:', result.locations.length)
         setLocations(result.locations)
       } catch (e) {
         console.error(e)
@@ -100,6 +101,11 @@ function GemstatMapPanel(): React.JSX.Element {
         <p className="text-sm text-muted-foreground">
           Select a station from the map and continue with dataset import.
         </p>
+        {!isLoading && locations ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Loaded points: <span className="font-mono">{locations.length}</span>
+          </p>
+        ) : null}
       </div>
       {isLoading ? (
         <div className="space-y-1.5">
@@ -121,8 +127,12 @@ function GemstatMapPanel(): React.JSX.Element {
         </div>
       ) : null}
       <div className="relative h-[520px] overflow-hidden rounded-[6px] border border-border bg-muted">
-        {!isLoading && locations ? (
+        {!isLoading && locations && locations.length > 0 ? (
           <OpenStreetMapPointsCard points={locations} />
+        ) : !isLoading && locations && locations.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            No map points returned by backend for this account.
+          </div>
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             Preparing map data...

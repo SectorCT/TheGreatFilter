@@ -1,10 +1,57 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@renderer/components/ui/button'
+import { getAccessToken, login, signup } from '@renderer/utils/api'
 
 export function Auth(): React.JSX.Element {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const existingToken = getAccessToken()
+    if (existingToken) {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [navigate])
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
+    e.preventDefault()
+    setError(null)
+
+    if (!email.trim() || !password) {
+      setError('Email and password are required.')
+      return
+    }
+
+    if (mode === 'signup' && password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      if (mode === 'login') {
+        await login({ email: email.trim(), password })
+      } else {
+        await signup({
+          email: email.trim(),
+          password,
+          password2: confirmPassword,
+        })
+      }
+      navigate('/dashboard')
+    } catch (submitError) {
+      console.error(submitError)
+      setError('Authentication failed. Check credentials and try again.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6">
@@ -40,28 +87,39 @@ export function Auth(): React.JSX.Element {
         <form
           className="space-y-3"
           onSubmit={(e) => {
-            e.preventDefault()
-            navigate('/dashboard')
+            void handleSubmit(e)
           }}
         >
           <input
             type="email"
             placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={isSubmitting}
             className="h-9 w-full rounded-[6px] border border-input bg-surface-elevated px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
           <input
             type="password"
             placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={isSubmitting}
             className="h-9 w-full rounded-[6px] border border-input bg-surface-elevated px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
           {mode === 'signup' ? (
             <input
               type="password"
               placeholder="Confirm Password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              disabled={isSubmitting}
               className="h-9 w-full rounded-[6px] border border-input bg-surface-elevated px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
           ) : null}
-          <Button className="w-full">{mode === 'login' ? 'Log In' : 'Create Account'}</Button>
+          {error ? <p className="text-xs text-destructive">{error}</p> : null}
+          <Button className="w-full" disabled={isSubmitting}>
+            {isSubmitting ? 'Please wait...' : mode === 'login' ? 'Log In' : 'Create Account'}
+          </Button>
         </form>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">v1.0 · Hack TUES 2026</p>
