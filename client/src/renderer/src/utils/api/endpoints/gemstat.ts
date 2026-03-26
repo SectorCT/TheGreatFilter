@@ -1,6 +1,7 @@
 import { makeAuthenticatedReq } from '../makeAuthenticatedReq'
 import {
   type GemstatLocationFetchResponse,
+  type MeasurementMapResponse,
   type GemstatStationMeasurementsResponse,
   type GemstatSnapshotFetchResponse,
   type GemstatStationMeasurementRow,
@@ -10,40 +11,48 @@ import {
 export const getGemstatLocations = async (): Promise<GemstatLocationFetchResponse> => {
   return makeAuthenticatedReq<undefined, GemstatLocationFetchResponse>({
     method: 'GET',
-    path: '/gemstat/locations',
+    path: '/api/measurements/map/',
     authRequired: true,
-    fake404: () => ({
-      locations: [
-        {
-          locationId: 'fake-location-1',
-          localStationNumber: null,
-          countryName: 'Bulgaria',
-          waterType: 'River',
-          stationIdentifier: null,
-          stationNarrative: 'Fake station narrative 1',
-          waterBodyName: 'Fake Water Body 1',
-          mainBasin: null,
-          upstreamBasinArea: null,
-          elevation: null,
-          monitoringType: null,
-          dateStationOpened: null,
-          responsibleCollectionAgency: null,
-          latitude: 42.6977,
-          longitude: 23.3219,
-          riverWidth: null,
-          discharge: null,
-          maxDepth: null,
-          lakeArea: null,
-          lakeVolume: null,
-          averageRetention: null,
-          areaOfAquifer: null,
-          depthOfImpermableLining: null,
-          productionZone: null,
-          meanAbstractionRate: null,
-          meanAbstractionLevel: null
-        }
-      ]
-    })
+    parseResponse: async (response) => {
+      const payload = (await response.json()) as MeasurementMapResponse
+      console.info('[Map API] /api/measurements/map/ response:', payload)
+      const locations = (payload.results ?? []).map((item) => ({
+        locationId: item.measurementId,
+        localStationNumber: item.sampleLocation?.station_id ?? null,
+        countryName: item.sampleLocation?.country ?? null,
+        waterType: item.sampleLocation?.water_type ?? null,
+        stationIdentifier: item.sampleLocation?.station_identifier ?? null,
+        stationNarrative: item.name ?? null,
+        waterBodyName: item.name ?? null,
+        mainBasin: null,
+        upstreamBasinArea: null,
+        elevation: null,
+        monitoringType: null,
+        dateStationOpened: item.sampleDate ?? null,
+        responsibleCollectionAgency: null,
+        latitude: item.latitude,
+        longitude: item.longitude,
+        riverWidth: null,
+        discharge: null,
+        maxDepth: null,
+        lakeArea: null,
+        lakeVolume: null,
+        averageRetention: null,
+        areaOfAquifer: null,
+        depthOfImpermableLining: null,
+        productionZone: null,
+        meanAbstractionRate: null,
+        meanAbstractionLevel: null,
+      }))
+
+      return {
+        locations,
+      }
+    },
+    fake404: () => {
+      console.warn('[Map API] 404 from /api/measurements/map/; returning empty locations.')
+      return { locations: [] }
+    },
   })
 }
 
@@ -52,9 +61,25 @@ export const getGemstatStationMeasurements = async (
 ): Promise<GemstatStationMeasurementsResponse> => {
   return makeAuthenticatedReq<undefined, GemstatStationMeasurementsResponse>({
     method: 'GET',
-    path: '/gemstat/station-measurements',
-    query: { locationId },
+    path: `/api/measurements/${locationId}/`,
     authRequired: true,
+    parseResponse: async (response) => {
+      const measurement = (await response.json()) as Measurement
+      const sampleDate = measurement.createdAt.slice(0, 10)
+      return {
+        locationId,
+        measurements: (measurement.parameters ?? []).map((p) =>
+          makeFakeStationRow({
+            sampleDate,
+            sampleTime: '00:00',
+            parameterCode: p.parameterCode,
+            value: p.value,
+            unit: p.unit ?? '',
+            depth: null,
+          }),
+        ),
+      }
+    },
     fake404: () => ({
       locationId,
       measurements: [
@@ -93,9 +118,12 @@ export const getGemstatSnapshot = async (
 ): Promise<GemstatSnapshotFetchResponse> => {
   return makeAuthenticatedReq<undefined, GemstatSnapshotFetchResponse>({
     method: 'GET',
-    path: '/gemstat/snapshots',
-    query: { locationId, date },
+    path: `/api/measurements/${locationId}/`,
     authRequired: true,
+    parseResponse: async (response) => {
+      const measurement = (await response.json()) as Measurement
+      return { measurement }
+    },
     fake404: (): GemstatSnapshotFetchResponse => {
       const measurement: Measurement = {
         measurementId: `fake-measurement-${locationId}-${date}`,

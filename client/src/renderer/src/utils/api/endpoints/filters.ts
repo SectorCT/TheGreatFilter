@@ -11,7 +11,7 @@ export const generateFilter = async (
 ): Promise<GenerateFilterResponse> => {
   return makeAuthenticatedReq<GenerateFilterRequest, GenerateFilterResponse>({
     method: 'POST',
-    path: '/filters/generate',
+    path: '/api/filters/generate/',
     body: request,
     authRequired: true,
     fake404: () => ({
@@ -24,7 +24,7 @@ export const generateFilter = async (
 export const getFilterStatus = async (filterId: string): Promise<FilterStatusRefreshResponse> => {
   return makeAuthenticatedReq<undefined, FilterStatusRefreshResponse>({
     method: 'GET',
-    path: `/filters/${filterId}/status`,
+    path: `/api/filters/${filterId}/status/`,
     authRequired: true,
     fake404: () => ({
       filterId,
@@ -37,15 +37,18 @@ export const getFilterStatus = async (filterId: string): Promise<FilterStatusRef
 export const getFilterDetails = async (filterId: string): Promise<FilterDetailsSuccessResponse> => {
   return makeAuthenticatedReq<undefined, FilterDetailsSuccessResponse>({
     method: 'GET',
-    path: `/filters/${filterId}`,
+    path: `/api/filters/${filterId}/`,
     authRequired: true,
     fake404: () => ({
       filterId,
+      studyId: `fake-study-${Date.now()}`,
+      measurementId: `fake-measurement-${Date.now()}`,
       status: 'Success',
       createdAt: new Date().toISOString(),
       filterInfo: {
-        // Opaque object; the UI will interpret it later.
-        summary: 'Fake filter details for development'
+        summaryMetrics: {
+          summary: 'Fake filter details for development'
+        }
       }
     })
   })

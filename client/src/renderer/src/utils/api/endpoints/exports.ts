@@ -33,7 +33,7 @@ export const exportFilterCsv = async (
 ): Promise<ExportGeneratedFilterCsvResponse> => {
   return makeAuthenticatedReq<undefined, ExportGeneratedFilterCsvResponse>({
     method: 'GET',
-    path: `/filters/${filterId}/export`,
+    path: `/api/filters/${filterId}/export/`,
     query: { format: 'csv' },
     authRequired: true,
     parseResponse: parseExportResponse,

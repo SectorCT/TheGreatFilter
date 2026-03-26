@@ -21,6 +21,12 @@ type RenderPoint = {
   source: GemstatLocation
 }
 
+const POINT_ICON = divIcon({
+  html: '<div style="width:8px;height:8px;background:#ff5a3c;border:1px solid rgba(0,0,0,0.55);border-radius:999px;"></div>',
+  className: 'tgif-point-icon',
+  iconSize: point(8, 8, true),
+})
+
 const getDefaultCenter = (points: GemstatLocation[]): [number, number] => {
   const first = points.find(
     (p) => typeof p.latitude === 'number' && typeof p.longitude === 'number'
@@ -68,6 +74,27 @@ function FitPointsBounds({ points }: { points: GemstatLocation[] }): null {
   return null
 }
 
+function InvalidateOnResize(): null {
+  const map = useMap()
+
+  useEffect(() => {
+    const onResize = (): void => {
+      map.invalidateSize()
+    }
+
+    window.addEventListener('resize', onResize)
+    // Ensure correct first layout when parent size changes quickly.
+    const timeout = setTimeout(onResize, 0)
+
+    return () => {
+      clearTimeout(timeout)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [map])
+
+  return null
+}
+
 const getWrappedRenderPoints = (points: GemstatLocation[]): RenderPoint[] => {
   const copies: RenderPoint[] = []
   for (const p of points) {
@@ -87,16 +114,14 @@ const getWrappedRenderPoints = (points: GemstatLocation[]): RenderPoint[] => {
 export default function OpenStreetMapPointsCard({
   points
 }: OpenStreetMapPointsCardProps): React.JSX.Element {
-  const safePoints = points ?? []
-  const center = useMemo(() => getDefaultCenter(safePoints), [safePoints])
-  const wrappedPoints = useMemo(() => getWrappedRenderPoints(safePoints), [safePoints])
+  const center = useMemo(() => getDefaultCenter(points), [points])
+  const renderPoints = useMemo(() => getWrappedRenderPoints(points), [points])
   const [tilesFailed, setTilesFailed] = useState(false)
   const [tilesLoading, setTilesLoading] = useState(true)
 
   return (
-    <div style={{ position: 'fixed', inset: 0, width: '100vw', height: '100vh' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <MapContainer
-        key={safePoints.length}
         center={center}
         zoom={2}
         minZoom={2}
@@ -110,7 +135,8 @@ export default function OpenStreetMapPointsCard({
         style={{ width: '100%', height: '100%' }}
         scrollWheelZoom={true}
       >
-        {safePoints.length ? <FitPointsBounds points={safePoints} /> : null}
+        <InvalidateOnResize />
+        {points.length ? <FitPointsBounds points={points} /> : null}
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution="&copy; OpenStreetMap contributors"
@@ -131,36 +157,22 @@ export default function OpenStreetMapPointsCard({
           chunkedLoading
           chunkInterval={200}
           chunkDelay={50}
-          animate={false}
+          animate
           animateAddingMarkers={false}
           spiderfyOnMaxZoom={false}
           showCoverageOnHover={false}
-          disableClusteringAtZoom={6}
-          maxClusterRadius={90}
-          iconCreateFunction={(cluster) =>
-            divIcon({
-              html: `<div style="background:#e54a2f;color:white;border:2px solid rgba(0,0,0,0.35);border-radius:999px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;">${cluster.getChildCount()}</div>`,
-              className: 'tgif-cluster-icon',
-              iconSize: point(34, 34, true)
-            })
-          }
+          maxClusterRadius={60}
         >
-          {wrappedPoints.map((p) => (
-            <Marker
-              key={p.key}
-              position={[p.lat, p.lon]}
-              icon={divIcon({
-                html: '<div style="width:8px;height:8px;background:#ff5a3c;border:1px solid rgba(0,0,0,0.55);border-radius:999px;"></div>',
-                className: 'tgif-point-icon',
-                iconSize: point(8, 8, true)
-              })}
-            >
+          {renderPoints.map((p) => (
+            <Marker key={p.key} position={[p.lat, p.lon]} icon={POINT_ICON}>
               <Popup>{getPopupText(p.source) || p.source.locationId}</Popup>
             </Marker>
           ))}
         </MarkerClusterGroup>
       </MapContainer>
-      {tilesLoading && !tilesFailed ? <FullscreenLoadingScreen title="Loading map tiles…" /> : null}
+      {tilesLoading && !tilesFailed ? (
+        <FullscreenLoadingScreen title="Loading map tiles…" fixed={false} />
+      ) : null}
       {tilesFailed ? (
         <div
           style={{

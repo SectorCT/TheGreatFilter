@@ -45,9 +45,8 @@ export function AppTitleBar(): React.JSX.Element {
   const timerLabel = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 
   return (
-    <header className="no-drag flex h-12 items-center justify-between border-b border-border bg-card/90 px-3 backdrop-blur">
-      <div className="drag-region absolute inset-0 -z-10" />
-      <div className="flex items-center gap-2">
+    <header className="drag-region flex h-12 items-center justify-between border-b border-border bg-card/90 px-3 backdrop-blur">
+      <div className="no-drag flex items-center gap-2">
         <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-secondary text-xs font-semibold">
           H₂
         </div>
@@ -91,7 +90,7 @@ export function AppTitleBar(): React.JSX.Element {
         </Menu>
       </div>
 
-      <div className="mx-4 hidden max-w-xl flex-1 lg:flex">
+      <div className="no-drag mx-4 hidden max-w-xl flex-1 lg:flex">
         <div className="flex h-8 w-full items-center gap-2 rounded-[6px] border border-input bg-surface-elevated px-3 text-sm text-muted-foreground">
           <Search size={14} strokeWidth={1.5} />
           <input
@@ -102,7 +101,7 @@ export function AppTitleBar(): React.JSX.Element {
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="no-drag flex items-center gap-3">
         <button
           className="rounded-[6px] border border-input px-2 py-1 text-xs text-muted-foreground"
           onClick={() => {
@@ -146,8 +145,11 @@ function Menu({
       <button className="rounded-[6px] px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
         {title}
       </button>
-      <div className="invisible absolute left-0 top-full z-50 mt-1 min-w-56 rounded-[6px] border border-border bg-card p-1 opacity-0 shadow-sm transition group-hover:visible group-hover:opacity-100">
-        {children}
+      <div className="pointer-events-none absolute left-0 top-full h-2 w-full" />
+      <div className="invisible absolute left-0 top-full z-50 min-w-56 pt-1 opacity-0 transition group-hover:visible group-hover:opacity-100">
+        <div className="rounded-[6px] border border-border bg-card p-1 shadow-sm">
+          {children}
+        </div>
       </div>
     </div>
   )

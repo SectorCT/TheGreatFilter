@@ -16,9 +16,11 @@
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
+    "make:icons": "python3 scripts/generate-icons.py",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
-    "build:linux": "electron-vite build && electron-builder --linux"
+    "build:linux": "electron-vite build && electron-builder --linux",
+    "build:all": "npm run build && electron-builder -mwl"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
@@ -26,6 +28,7 @@
     "electron-updater": "^6.3.9",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tanstack/react-query": "^5.95.2",
+    "3dmol": "^2.5.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "leaflet": "^1.9.4",

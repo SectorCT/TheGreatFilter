@@ -10,10 +10,12 @@ export type MeasurementParameter = {
 }
 
 export type MeasurementCreateRequest = {
+  name?: string
   source: MeasurementSource
   temperature: number
   ph: number
   parameters: MeasurementParameter[]
+  sampleLocation?: Record<string, unknown>
 }
 
 export type MeasurementCreateResponse = {
@@ -22,24 +24,74 @@ export type MeasurementCreateResponse = {
 
 export type Measurement = {
   measurementId: string
+  name?: string
   source: MeasurementSource
   createdAt: string // ISO-8601
   temperature: number
   ph: number
   parameters: MeasurementParameter[]
+  sampleLocation?: Record<string, unknown>
 }
 
 // ---------------- Auth ----------------
 
 export type LoginRequest = { email: string; password: string }
 
-export type AuthUser = { userId: string; email: string }
+export type SignupRequest = {
+  email: string
+  full_name?: string
+  organization_name?: string
+  role_title?: string
+  country?: string
+  password: string
+  password2: string
+}
 
-export type AuthResponse = { token: string; user: AuthUser }
+export type AuthUser = {
+  userId: number
+  username: string
+  email: string
+  full_name?: string
+  organization_name?: string
+  role_title?: string
+  country?: string
+  dateJoined?: string
+}
 
-export type SignupRequest = LoginRequest
+export type AuthResponse = {
+  token: string
+  refreshToken: string
+  user: AuthUser
+}
 
 export type SignupResponse = AuthResponse
+
+// --------------- Studies ----------------
+
+export type Study = {
+  id: string
+  name: string
+  description?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+export type StudyCreateRequest = {
+  name: string
+  description?: string
+}
+
+export type StudyUpdateRequest = {
+  name?: string
+  description?: string
+}
+
+export type StudyListResponse =
+  | {
+      results?: Study[]
+      count?: number
+    }
+  | Study[]
 
 // --------------- GemStat ----------------
 
@@ -97,11 +149,50 @@ export type GemstatSnapshotFetchResponse = {
   measurement: Measurement
 }
 
+// --------------- Measurements ----------------
+
+export type MeasurementMapItem = {
+  measurementId: string
+  name: string
+  source: MeasurementSource | string
+  temperature: number
+  ph: number
+  latitude: number
+  longitude: number
+  parameterCount: number
+  sampleDate: string
+  sampleTime: string
+  sampleLocation?: {
+    station_id?: string
+    country?: string
+    water_type?: string
+    station_identifier?: string
+    latitude?: number
+    longitude?: number
+  } | null
+  createdAt: string
+}
+
+export type MeasurementMapResponse = {
+  results: MeasurementMapItem[]
+  count: number
+}
+
+export type MeasurementListResponse =
+  | {
+      results?: Measurement[]
+      count?: number
+    }
+  | Measurement[]
+
 // --------------- Filters ----------------
 
 export type FilterStatus = 'Pending' | 'Generating' | 'Success' | 'Failed'
 
-export type GenerateFilterRequest = { measurementId: string }
+export type GenerateFilterRequest = {
+  studyId: string
+  measurementId: string
+}
 
 export type GenerateFilterResponse = {
   filterId: string
@@ -116,8 +207,17 @@ export type FilterStatusRefreshResponse = {
 
 export type FilterDetailsSuccessResponse = {
   filterId: string
+  studyId: string
+  measurementId: string
   status: 'Success'
-  filterInfo: unknown // opaque for now
+  filterInfo:
+    | {
+        filterStructure?: Record<string, unknown>
+        experimentPayload?: Record<string, unknown>
+        resultPayload?: Record<string, unknown>
+        summaryMetrics?: Record<string, unknown>
+      }
+    | Record<string, unknown>
   createdAt: string // ISO-8601
 }
 

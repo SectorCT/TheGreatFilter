@@ -1,8 +1,14 @@
-export default function FullscreenLoadingScreen({ title }: { title?: string }): React.JSX.Element {
+export default function FullscreenLoadingScreen({
+  title,
+  fixed = true,
+}: {
+  title?: string
+  fixed?: boolean
+}): React.JSX.Element {
   return (
     <div
       style={{
-        position: 'fixed',
+        position: fixed ? 'fixed' : 'absolute',
         inset: 0,
         display: 'flex',
         alignItems: 'center',
