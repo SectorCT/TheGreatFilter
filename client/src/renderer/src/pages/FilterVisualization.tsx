@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Loader2, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Loader2 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import * as $3Dmol from '3dmol'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
-import { Button } from '@renderer/components/ui/button'
 import { getFilterDetails } from '@renderer/utils/api/endpoints'
 import type { FilterInfo } from '@renderer/utils/api/types'
 import { atomPositionsToXyz, buildFilterInfoViewModel } from '@renderer/utils/filterInfoViewModel'
@@ -78,7 +77,7 @@ export function FilterVisualization(): React.JSX.Element {
   const navigate = useNavigate()
   const { id } = useParams()
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const [seed, setSeed] = useState(() => Date.now())
+  const [seed] = useState(() => Date.now())
   const [selectedAtom, setSelectedAtom] = useState<SelectedAtomInfo | null>(null)
   const [loading, setLoading] = useState(Boolean(id))
   const [filterInfo, setFilterInfo] = useState<FilterInfo | null>(null)
@@ -157,13 +156,7 @@ export function FilterVisualization(): React.JSX.Element {
     } else {
       viewer.addModel(xyz, 'xyz')
     }
-    if (atomCount > 1400) {
-      viewer.setStyle({}, { sphere: { scale: 0.16 } })
-    } else if (atomCount > 700) {
-      viewer.setStyle({}, { sphere: { scale: 0.24 } })
-    } else {
-      viewer.setStyle({}, { stick: { radius: 0.16 }, sphere: { scale: 0.29 } })
-    }
+    viewer.setStyle({}, { stick: { radius: 0.06 }, sphere: { scale: 0.15 } })
     viewer.setClickable({}, true, (atom: ClickableAtom) => {
       const atomIndex = typeof atom?.serial === 'number' ? atom.serial : (atom?.index ?? '?')
       const targets = Array.isArray(atom?.bonds) ? atom.bonds.slice(0, 8).join(', ') : 'None'
@@ -218,10 +211,6 @@ export function FilterVisualization(): React.JSX.Element {
             <p className="font-mono text-xs text-muted-foreground">Filter {id ?? '-'}</p>
           </div>
         </div>
-        <Button variant="outline" onClick={() => setSeed(Date.now())}>
-          <RefreshCw size={14} strokeWidth={1.5} />
-          Regenerate Fallback Structure
-        </Button>
       </div>
       {error ? (
         <div className="mb-4 rounded-[6px] border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
