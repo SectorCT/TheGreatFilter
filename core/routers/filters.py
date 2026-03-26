@@ -1,9 +1,10 @@
 """Filter generation endpoints.
 
-POST /generate          — kick off background filter generation
-GET  /{filterId}/status — poll generation status
-GET  /{filterId}        — full filter details
-GET  /{filterId}/export — download CSV
+POST /generate             — kick off background filter generation
+GET  /{filterId}/status    — poll generation status
+GET  /{filterId}           — full filter details
+GET  /{filterId}/export    — download CSV
+GET  /{filterId}/structure — molecular structure (xyz or sdf) for 3Dmol.js
 """
 
 import asyncio
@@ -45,7 +46,7 @@ async def generate_filter(req: GenerateRequest, request: Request):
                 filter_id, req.measurementId, req.temperature, req.ph,
                 [p.name for p in req.params])
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     executor = request.app.state.executor
     loop.run_in_executor(executor, run_generation, filter_id, req.measurementId, measurement_data)
 
@@ -103,6 +104,40 @@ async def export_filter(filter_id: str, format: str = Query(default="csv")):
         io.BytesIO(csv_content.encode("utf-8")),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="filter_{filter_id[:8]}.csv"'},
+    )
+
+
+@router.get("/{filter_id}/structure")
+async def structure_filter(filter_id: str, format: str = Query(default="xyz")):
+    """Return molecular structure for 3Dmol.js visualisation.
+
+    format=xyz  — plain XYZ (default); load with viewer.addModel(text, 'xyz')
+    format=sdf  — MDL Molfile V2000 with bond table; load with viewer.addModel(text, 'sdf')
+    """
+    row = await get_filter(filter_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Filter not found")
+    if row["status"] != "Success":
+        raise HTTPException(status_code=400, detail="Filter not yet generated")
+    if not row["filter_info"]:
+        raise HTTPException(status_code=400, detail="No filter data available")
+
+    info = json.loads(row["filter_info"])
+    fmt = format.lower().strip(".")
+
+    if fmt == "sdf":
+        content = _build_sdf(info, filter_id)
+        media_type = "chemical/x-mdl-sdfile"
+        filename = f"filter_{filter_id[:8]}.sdf"
+    else:
+        content = _build_xyz(info, filter_id)
+        media_type = "chemical/x-xyz"
+        filename = f"filter_{filter_id[:8]}.xyz"
+
+    return StreamingResponse(
+        io.BytesIO(content.encode("utf-8")),
+        media_type=media_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
 
 
@@ -261,6 +296,94 @@ def _generate_cnt_positions(a: float) -> list[dict]:
         })
 
     return positions
+
+
+# ── Molecular structure builders ─────────────────────────────────────────────
+
+def _build_xyz(info: dict, filter_id: str) -> str:
+    """Build XYZ format string for 3Dmol.js.
+
+    Line 1: atom count
+    Line 2: metadata comment (parsed by nothing, but useful for debugging)
+    Lines 3+: element  x  y  z
+    """
+    atoms = info.get("atomPositions", [])
+    lines = [
+        str(len(atoms)),
+        (
+            f"filter_id={filter_id} "
+            f"material={info.get('materialType','')} "
+            f"pollutant={info.get('pollutantSymbol','')} "
+            f"pore={info.get('poreSize','')}nm "
+            f"binding={info.get('bindingEnergy','')}eV "
+            f"efficiency={info.get('removalEfficiency','')}%"
+        ),
+    ]
+    for atom in atoms:
+        lines.append(f"{atom['element']:2s}  {atom['x']:10.4f}  {atom['y']:10.4f}  {atom['z']:10.4f}")
+    return "\n".join(lines) + "\n"
+
+
+def _build_sdf(info: dict, filter_id: str) -> str:
+    """Build MDL Molfile V2000 (SDF) for 3Dmol.js.
+
+    Bond table uses k-nearest-neighbour (k=3 per C atom) rather than a fixed
+    distance threshold.  k=3 matches sp² hybridisation and works regardless of
+    whether the lattice spacing is at graphene scale (2.46 Å) or CNT scale.
+    The pollutant atom (last in list) is intentionally left unbonded — it is
+    being captured by the filter, not covalently bonded to it.
+    """
+    atoms = info.get("atomPositions", [])
+    n = len(atoms)
+
+    # k-NN bond detection on carbon atoms only (exclude last atom = pollutant)
+    carbon_indices = [i for i in range(n - 1) if atoms[i]["element"] == "C"]
+    bond_set: set[tuple[int, int]] = set()
+    k = 3  # sp² carbon bonds
+    for i in carbon_indices:
+        dists = []
+        for j in carbon_indices:
+            if i == j:
+                continue
+            dx = atoms[i]["x"] - atoms[j]["x"]
+            dy = atoms[i]["y"] - atoms[j]["y"]
+            dz = atoms[i]["z"] - atoms[j]["z"]
+            dists.append((math.sqrt(dx * dx + dy * dy + dz * dz), j))
+        dists.sort()
+        for _, j in dists[:k]:
+            bond_set.add((min(i, j) + 1, max(i, j) + 1))  # SDF: 1-based indices
+
+    bonds = [(a, b, 1) for a, b in sorted(bond_set)]
+
+    na, nb = n, len(bonds)
+
+    lines = [
+        # Header block (3 lines)
+        f"filter_{filter_id[:8]}",
+        "  TheGreatFilter",
+        (
+            f" material={info.get('materialType','')} "
+            f"pollutant={info.get('pollutantSymbol','')} "
+            f"binding={info.get('bindingEnergy','')}eV"
+        ),
+        # Counts line
+        f"{na:3d}{nb:3d}  0  0  0  0  0  0  0  0999 V2000",
+    ]
+
+    # Atom block
+    for atom in atoms:
+        lines.append(
+            f"{atom['x']:10.4f}{atom['y']:10.4f}{atom['z']:10.4f} "
+            f"{atom['element']:<3s} 0  0  0  0  0  0  0  0  0  0  0  0"
+        )
+
+    # Bond block
+    for a1, a2, order in bonds:
+        lines.append(f"{a1:3d}{a2:3d}{order:3d}  0  0  0  0")
+
+    lines.append("M  END")
+    lines.append("$$$$")
+    return "\n".join(lines) + "\n"
 
 
 # ── CSV export builder ───────────────────────────────────────────────────────

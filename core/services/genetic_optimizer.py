@@ -1,7 +1,11 @@
 """Genetic algorithm optimizer for nano-filtration filter design.
 
 Uses DEAP to evolve filter parameters (pore size, layer thickness,
-lattice spacing, material type) with quantum binding energy as fitness.
+material type) with quantum binding energy as fitness.
+
+Note: lattice_spacing is fixed at the known physical constant for the
+material (2.46 Å for graphene C-C bond length) rather than evolved,
+because the simplified single-atom quantum model does not capture its effect.
 """
 
 import logging
@@ -13,15 +17,15 @@ from services.quantum_engine import compute_binding_energy
 
 logger = logging.getLogger("h2osim.ga")
 
-# Gene bounds: [pore_size_nm, layer_thickness_nm, lattice_spacing_A, material_idx]
+# Gene bounds: [pore_size_nm, layer_thickness_nm, material_idx]
 GENE_BOUNDS = [
     (0.3, 2.0),    # pore_size in nm
     (0.5, 5.0),    # layer_thickness in nm
-    (1.5, 4.0),    # lattice_spacing in angstrom
     (0.0, 1.0),    # material_type index (0=graphene, 1=CNT)
 ]
 
 MATERIAL_TYPES = ["graphene", "cnt"]
+LATTICE_SPACING = 2.46  # Å — graphene C-C bond length (physical constant)
 
 
 def _init_individual(icls):
@@ -31,13 +35,11 @@ def _init_individual(icls):
 def _evaluate(individual, pollutant_symbol, pollutant_charge, temperature, ph):
     """Fitness function: run VQE and return (abs(binding_energy),)."""
     pore_size = individual[0]
-    lattice_spacing = individual[2]
 
     result = compute_binding_energy(
         pollutant_symbol=pollutant_symbol,
         pollutant_charge=pollutant_charge,
         pore_size_nm=pore_size,
-        lattice_spacing_angstrom=lattice_spacing,
         temperature_c=temperature,
         ph=ph,
     )
@@ -134,10 +136,11 @@ def optimize_filter(
         for ind, fit in zip(invalid, fitnesses):
             ind.fitness.values = fit
 
-        gen_best = max(ind.fitness.values[0] for ind in pop)
-        logger.info("GA gen %d: evaluated=%d best_fitness=%.6f", gen + 1, len(invalid), gen_best)
-
         pop[:] = offspring
+
+        gen_best = max(ind.fitness.values[0] for ind in pop)
+        logger.info("GA gen %d: evaluated=%d best_fitness=%.6f",
+                     gen + 1, len(invalid), gen_best)
 
     # Get best individual
     best = tools.selBest(pop, 1)[0]
@@ -147,18 +150,17 @@ def optimize_filter(
         pollutant_symbol=pollutant_symbol,
         pollutant_charge=pollutant_charge,
         pore_size_nm=best[0],
-        lattice_spacing_angstrom=best[2],
         temperature_c=temperature,
         ph=ph,
     )
 
-    material_idx = int(round(best[3]))
+    material_idx = int(round(best[2]))
     material_idx = max(0, min(material_idx, len(MATERIAL_TYPES) - 1))
 
     return {
         "pore_size": round(best[0], 4),
         "layer_thickness": round(best[1], 4),
-        "lattice_spacing": round(best[2], 4),
+        "lattice_spacing": LATTICE_SPACING,
         "material_type": MATERIAL_TYPES[material_idx],
         "binding_energy": final_result["binding_energy"],
         "removal_efficiency": final_result["removal_efficiency"],
