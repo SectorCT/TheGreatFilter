@@ -5,5 +5,4 @@ out
 .eslintcache
 *.log*
 .zip
-GFQA_v3
-GFQA_v3.zip
+GFQA_v3/*
