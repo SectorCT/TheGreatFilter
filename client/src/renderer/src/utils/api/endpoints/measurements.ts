@@ -181,6 +181,8 @@ export const getMeasurementById = async (measurementId: string): Promise<Measure
       measurementId,
       source: 'manual',
       createdAt: new Date().toISOString(),
+      sampleDate: new Date().toISOString().slice(0, 10),
+      sampleTime: '10:30:00',
       temperature: 22.1,
       ph: 7.3,
       parameters: []

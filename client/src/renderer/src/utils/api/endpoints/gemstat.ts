@@ -1,11 +1,14 @@
 import { makeAuthenticatedReq } from '../makeAuthenticatedReq'
 import {
+  type GemstatLocation,
   type GemstatLocationFetchResponse,
   type MeasurementMapResponse,
   type GemstatStationMeasurementsResponse,
   type GemstatSnapshotFetchResponse,
+  type GemstatLocationRow,
   type GemstatStationMeasurementRow,
-  type Measurement
+  type Measurement,
+  type MeasurementParameter
 } from '../types'
 
 export const getGemstatLocations = async (): Promise<GemstatLocationFetchResponse> => {
@@ -16,34 +19,57 @@ export const getGemstatLocations = async (): Promise<GemstatLocationFetchRespons
     parseResponse: async (response) => {
       const payload = (await response.json()) as MeasurementMapResponse
       console.info('[Map API] /api/measurements/map/ response:', payload)
-      const locations = (payload.results ?? []).map((item) => ({
-        locationId: item.measurementId,
-        localStationNumber: item.sampleLocation?.station_id ?? null,
-        countryName: item.sampleLocation?.country ?? null,
-        waterType: item.sampleLocation?.water_type ?? null,
-        stationIdentifier: item.sampleLocation?.station_identifier ?? null,
-        stationNarrative: item.name ?? null,
-        waterBodyName: item.name ?? null,
-        mainBasin: null,
-        upstreamBasinArea: null,
-        elevation: null,
-        monitoringType: null,
-        dateStationOpened: item.sampleDate ?? null,
-        responsibleCollectionAgency: null,
-        latitude: item.latitude,
-        longitude: item.longitude,
-        riverWidth: null,
-        discharge: null,
-        maxDepth: null,
-        lakeArea: null,
-        lakeVolume: null,
-        averageRetention: null,
-        areaOfAquifer: null,
-        depthOfImpermableLining: null,
-        productionZone: null,
-        meanAbstractionRate: null,
-        meanAbstractionLevel: null,
-      }))
+      const locations: GemstatLocation[] = []
+      let droppedCount = 0
+      for (const item of payload.results ?? []) {
+        const latitude = item.latitude ?? item.sampleLocation?.latitude
+        const longitude = item.longitude ?? item.sampleLocation?.longitude
+        if (
+          typeof latitude !== 'number' ||
+          !Number.isFinite(latitude) ||
+          typeof longitude !== 'number' ||
+          !Number.isFinite(longitude)
+        ) {
+          droppedCount += 1
+          continue
+        }
+
+        locations.push({
+          locationId: item.locationId ?? item.sampleLocation?.station_id ?? item.measurementId,
+          measurementId: item.measurementId,
+          localStationNumber:
+            item.sampleLocation?.local_station_number ?? item.sampleLocation?.station_id ?? null,
+          countryName: item.sampleLocation?.country ?? null,
+          waterType: item.sampleLocation?.water_type ?? null,
+          stationIdentifier: item.sampleLocation?.station_identifier ?? null,
+          stationNarrative: item.sampleLocation?.station_narrative ?? item.name ?? null,
+          waterBodyName: item.sampleLocation?.water_body_name ?? item.name ?? null,
+          mainBasin: item.sampleLocation?.main_basin ?? null,
+          upstreamBasinArea: null,
+          elevation: null,
+          monitoringType: null,
+          dateStationOpened: item.latestSnapshot?.dateKey ?? null,
+          responsibleCollectionAgency: null,
+          latitude,
+          longitude,
+          riverWidth: null,
+          discharge: null,
+          maxDepth: null,
+          lakeArea: null,
+          lakeVolume: null,
+          averageRetention: null,
+          areaOfAquifer: null,
+          depthOfImpermableLining: null,
+          productionZone: null,
+          meanAbstractionRate: null,
+          meanAbstractionLevel: null,
+        })
+      }
+      if (droppedCount > 0) {
+        console.warn(
+          `[Map API] Dropped ${droppedCount} locations due to missing/invalid coordinates.`,
+        )
+      }
 
       return {
         locations,
@@ -61,27 +87,32 @@ export const getGemstatStationMeasurements = async (
 ): Promise<GemstatStationMeasurementsResponse> => {
   return makeAuthenticatedReq<undefined, GemstatStationMeasurementsResponse>({
     method: 'GET',
-    path: `/api/measurements/${locationId}/`,
+    path: `/api/measurements/locations/${locationId}/`,
     authRequired: true,
     parseResponse: async (response) => {
-      const measurement = (await response.json()) as Measurement
-      const sampleDate = measurement.createdAt.slice(0, 10)
+      const payload = (await response.json()) as {
+        measurementId: string
+        locationId: string
+        name?: string
+        source: string
+        rows?: GemstatLocationRow[]
+      }
+      const rows = payload.rows ?? []
       return {
-        locationId,
-        measurements: (measurement.parameters ?? []).map((p) =>
-          makeFakeStationRow({
-            sampleDate,
-            sampleTime: '00:00',
-            parameterCode: p.parameterCode,
-            value: p.value,
-            unit: p.unit ?? '',
-            depth: null,
-          }),
-        ),
+        measurementId: payload.measurementId,
+        locationId: payload.locationId ?? locationId,
+        stationName: payload.name ?? null,
+        source: payload.source,
+        rows,
+        measurements: rows.flatMap((row) => toStationRows(row)),
       }
     },
     fake404: () => ({
+      measurementId: `fake-measurement-${locationId}`,
       locationId,
+      stationName: 'Development station',
+      source: 'gemstat',
+      rows: [],
       measurements: [
         makeFakeStationRow({
           sampleDate: '2025-01-15',
@@ -118,10 +149,36 @@ export const getGemstatSnapshot = async (
 ): Promise<GemstatSnapshotFetchResponse> => {
   return makeAuthenticatedReq<undefined, GemstatSnapshotFetchResponse>({
     method: 'GET',
-    path: `/api/measurements/${locationId}/`,
+    path: `/api/measurements/locations/${locationId}/`,
     authRequired: true,
     parseResponse: async (response) => {
-      const measurement = (await response.json()) as Measurement
+      const payload = (await response.json()) as {
+        measurementId: string
+        source: string
+        createdAt?: string
+        rows?: GemstatLocationRow[]
+      }
+      const targetRow =
+        (payload.rows ?? []).find((row) => row.dateKey === date) ??
+        (payload.rows ?? [])[Math.max((payload.rows ?? []).length - 1, 0)]
+      const measurementParameters = (targetRow?.parameters ?? []).map((parameter) => ({
+        parameterCode: parameter.parameterCode,
+        parameterName: parameter.parameterName ?? undefined,
+        unit: parameter.unit ?? undefined,
+        value: parameter.value,
+      }))
+      const measurement: Measurement = {
+        measurementId: payload.measurementId,
+        source: payload.source as Measurement['source'],
+        createdAt: payload.createdAt ?? new Date().toISOString(),
+        sampleDate: targetRow?.dateKey,
+        sampleTime: targetRow?.sampleTime,
+        depth: targetRow?.depth ?? undefined,
+        volume: targetRow?.volume ?? undefined,
+        temperature: targetRow?.temperature ?? 0,
+        ph: targetRow?.ph ?? 0,
+        parameters: measurementParameters,
+      }
       return { measurement }
     },
     fake404: (): GemstatSnapshotFetchResponse => {
@@ -159,4 +216,33 @@ const makeFakeStationRow = (row: {
   value: row.value,
   unit: row.unit,
   dataQuality: null
+})
+
+const toStationRows = (row: GemstatLocationRow): GemstatStationMeasurementRow[] => {
+  const sourceParams = row.parameters ?? []
+  return sourceParams.map((parameter) =>
+    makeStationRowFromParameter({
+      sampleDate: row.dateKey,
+      sampleTime: row.sampleTime,
+      parameter,
+      depth: row.depth,
+    }),
+  )
+}
+
+const makeStationRowFromParameter = (row: {
+  sampleDate: string
+  sampleTime: string
+  parameter: MeasurementParameter
+  depth: number | null
+}): GemstatStationMeasurementRow => ({
+  sampleDate: row.sampleDate,
+  sampleTime: row.sampleTime,
+  depth: row.depth,
+  parameterCode: row.parameter.parameterCode,
+  analysisMethodCode: null,
+  valueFlags: null,
+  value: row.parameter.value,
+  unit: row.parameter.unit ?? '',
+  dataQuality: null,
 })

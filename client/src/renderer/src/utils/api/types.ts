@@ -12,6 +12,10 @@ export type MeasurementParameter = {
 export type MeasurementCreateRequest = {
   name?: string
   source: MeasurementSource
+  sampleDate: string
+  sampleTime: string
+  depth?: number
+  volume?: { value: number; unit: string }
   temperature: number
   ph: number
   parameters: MeasurementParameter[]
@@ -24,9 +28,14 @@ export type MeasurementCreateResponse = {
 
 export type Measurement = {
   measurementId: string
+  locationId?: string
   name?: string
   source: MeasurementSource
   createdAt: string // ISO-8601
+  sampleDate?: string
+  sampleTime?: string
+  depth?: number
+  volume?: { value: number; unit: string }
   temperature: number
   ph: number
   // Present in detail responses; list responses may omit it.
@@ -84,11 +93,13 @@ export type Study = {
 export type StudyCreateRequest = {
   name: string
   description?: string
+  status?: string
 }
 
 export type StudyUpdateRequest = {
   name?: string
   description?: string
+  status?: string
 }
 
 export type StudyListResponse =
@@ -102,6 +113,7 @@ export type StudyListResponse =
 
 export type GemstatLocation = {
   locationId: string
+  measurementId?: string
   localStationNumber: string | null
   countryName: string | null
   waterType: string | null
@@ -146,7 +158,11 @@ export type GemstatStationMeasurementRow = {
 }
 
 export type GemstatStationMeasurementsResponse = {
+  measurementId: string
+  stationName: string | null
+  source: MeasurementSource | string
   locationId: string
+  rows: GemstatLocationRow[]
   measurements: GemstatStationMeasurementRow[]
 }
 
@@ -154,23 +170,48 @@ export type GemstatSnapshotFetchResponse = {
   measurement: Measurement
 }
 
+export type GemstatLocationRow = {
+  dateKey: string
+  snapshotIndex: number
+  label: string
+  sampleTime: string
+  depth: number | null
+  volume: { value: number; unit: string } | null
+  temperature: number | null
+  ph: number | null
+  parameterCount: number
+  summary: string | null
+  parameters: MeasurementParameter[]
+}
+
 // --------------- Measurements ----------------
 
 export type MeasurementMapItem = {
   measurementId: string
+  locationId?: string
   name: string
   source: MeasurementSource | string
-  temperature: number
-  ph: number
-  latitude: number
-  longitude: number
-  parameterCount: number
-  sampleDate: string
-  sampleTime: string
+  latitude?: number | null
+  longitude?: number | null
+  dateCount?: number
+  snapshotCount?: number
+  latestSnapshot?: {
+    dateKey: string
+    snapshotIndex: number
+    sampleTime?: string
+    temperature?: number
+    ph?: number
+    parameterCount?: number
+    summary?: string
+  } | null
   sampleLocation?: {
     station_id?: string
+    local_station_number?: string
     country?: string
+    main_basin?: string
     water_type?: string
+    water_body_name?: string
+    station_narrative?: string
     station_identifier?: string
     latitude?: number
     longitude?: number
