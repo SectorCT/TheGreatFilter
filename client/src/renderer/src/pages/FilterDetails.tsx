@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, Eye } from 'lucide-react'
+import { ArrowLeft, Download, Eye, Play } from 'lucide-react'
 import { toast } from 'sonner'
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -94,6 +94,10 @@ export function FilterDetails(): React.JSX.Element {
           <Button variant="outline" onClick={() => navigate(`/filters/${filter.id}/visualize`)}>
             <Eye size={16} strokeWidth={1.5} />
             Visualize
+          </Button>
+          <Button variant="outline" onClick={() => navigate(`/filters/${filter.id}/simulate`)}>
+            <Play size={16} strokeWidth={1.5} />
+            Simulate
           </Button>
           <Button
             variant="outline"
