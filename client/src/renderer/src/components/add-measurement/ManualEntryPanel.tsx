@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@renderer/components/ui/button'
 import { cn } from '@renderer/lib/utils'
+import { createMeasurement } from '@renderer/utils/api'
 
 type ParameterPreset = {
   parameterCode: string
@@ -83,6 +84,8 @@ export function ManualEntryPanel(): React.JSX.Element {
   const [temperature, setTemperature] = useState('')
   const [ph, setPh] = useState('')
   const [rows, setRows] = useState<ManualParameterRow[]>([])
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const presetsByKey = Object.fromEntries(PARAMETER_PRESETS.map((p) => [getPresetKey(p), p] as const))
 
@@ -110,7 +113,7 @@ export function ManualEntryPanel(): React.JSX.Element {
   const phNumber = ph === '' ? null : Number(ph)
   const isPhValid = phNumber === null || (Number.isFinite(phNumber) && phNumber >= 0 && phNumber <= 14)
 
-  const handleSave = (): void => {
+  const buildPayload = () => {
     const extraRows = rows
       .map((row) => {
         const preset = presetsByKey[row.presetKey]
@@ -134,7 +137,7 @@ export function ManualEntryPanel(): React.JSX.Element {
     }> = []
 
     const t = Number(temperature)
-    if (temperature !== '' && Number.isFinite(t)) {
+    if (Number.isFinite(t)) {
       requiredRows.push({
         parameterCode: 'TEMP',
         parameterName: 'Temperature',
@@ -152,9 +155,39 @@ export function ManualEntryPanel(): React.JSX.Element {
       })
     }
 
-    console.info('[Manual] Prepared parameters array:', [...requiredRows, ...extraRows])
-    void measurementName
-    navigate('/dashboard')
+    return {
+      name: measurementName.trim() || undefined,
+      source: 'manual' as const,
+      temperature: t,
+      ph: Number(ph),
+      parameters: [...requiredRows, ...extraRows],
+    }
+  }
+
+  const canSubmit = temperature !== '' && ph !== '' && isPhValid && Number.isFinite(Number(temperature))
+
+  const handleSave = async (): Promise<void> => {
+    if (!canSubmit) {
+      setError('Temperature and pH are required and must be valid numbers.')
+      return
+    }
+
+    setIsSubmitting(true)
+    setError(null)
+    try {
+      await createMeasurement(buildPayload())
+      navigate('/dashboard')
+    } catch (submitError) {
+      const message =
+        submitError instanceof Error ? submitError.message : 'Failed to save measurement.'
+      setError(message)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleSaveAndGenerate = async (): Promise<void> => {
+    await handleSave()
   }
 
   return (
@@ -163,7 +196,7 @@ export function ManualEntryPanel(): React.JSX.Element {
         <div className="mb-4">
           <h2 className="text-sm font-semibold">Manual Measurement</h2>
           <p className="text-sm text-muted-foreground">
-            Structure aligned to `POST /api/measurements/` (UI-only, no submit integration yet).
+            Structure aligned to `POST /api/measurements/`.
           </p>
         </div>
 
@@ -290,11 +323,14 @@ export function ManualEntryPanel(): React.JSX.Element {
         </div>
 
         <div className="mt-5 flex flex-wrap gap-2">
-          <Button onClick={handleSave}>Save Measurement</Button>
-          <Button variant="outline" onClick={handleSave}>
+          <Button onClick={() => void handleSave()} disabled={!canSubmit || isSubmitting}>
+            {isSubmitting ? 'Saving...' : 'Save Measurement'}
+          </Button>
+          <Button variant="outline" onClick={() => void handleSaveAndGenerate()} disabled={!canSubmit || isSubmitting}>
             Save &amp; Generate Filter
           </Button>
         </div>
+        {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
       </div>
     </div>
   )

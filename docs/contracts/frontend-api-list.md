@@ -121,7 +121,7 @@ Base URL:
 ### `GET /measurements/`
 
 - Auth: required
-- Returns the current user's measurements as aggregate records
+- Returns the current user's measurements
 
 ### `POST /measurements/`
 
@@ -133,13 +133,6 @@ Base URL:
 {
   "name": "optional",
   "source": "manual|lab_equipment|csv_import|gemstat",
-  "sampleDate": "2026-03-26",
-  "sampleTime": "10:30:00",
-  "depth": 1.2,
-  "volume": {
-    "value": 10,
-    "unit": "L"
-  },
   "temperature": 22.1,
   "ph": 7.3,
   "parameters": [
@@ -166,12 +159,12 @@ Base URL:
 ### `GET /measurements/{id}/`
 
 - Auth: required
-- Returns the full aggregate measurement payload, including `rows` and `measurementsByDate`
+- Returns full measurement details
 
 ### `GET /measurements/map/`
 
 - Auth: required
-- Returns unique map-ready lab/station locations
+- Returns map-ready measurement dots
 - Example response:
 
 ```json
@@ -179,22 +172,15 @@ Base URL:
   "results": [
     {
       "measurementId": "uuid",
-      "locationId": "ARG00003",
-      "name": "Paraguay River - at Puerto Bermejo",
+      "name": "River sample",
       "source": "gemstat",
+      "temperature": 17.6,
+      "ph": 7.75,
       "latitude": -26.925888,
       "longitude": -58.507027,
-      "dateCount": 12,
-      "snapshotCount": 14,
-      "latestSnapshot": {
-        "dateKey": "2018-08-22",
-        "snapshotIndex": 0,
-        "sampleTime": "10:45:00",
-        "temperature": 17.6,
-        "ph": 7.75,
-        "parameterCount": 24,
-        "summary": "water 10L - NaCl 1%, Ag 0.001%"
-      },
+      "parameterCount": 24,
+      "sampleDate": "2018-08-22",
+      "sampleTime": "10:45:00",
       "sampleLocation": {
         "station_id": "ARG00003",
         "country": "Argentina",
@@ -202,101 +188,11 @@ Base URL:
         "station_identifier": "Paraguay River - at Puerto Bermejo",
         "latitude": -26.925888,
         "longitude": -58.507027
-      }
+      },
+      "createdAt": "2026-03-26T00:00:00Z"
     }
   ],
   "count": 1
-}
-```
-
-### `GET /measurements/locations/{locationId}/`
-
-- Auth: required
-- Returns the full aggregate payload for one clicked lab/station/location
-- Frontend should render the selector UI from the `rows` array
-- Example response:
-
-```json
-{
-  "measurementId": "uuid",
-  "locationId": "ARG00003",
-  "name": "Paraguay River - at Puerto Bermejo",
-  "source": "gemstat",
-  "createdAt": "2026-03-26T00:00:00Z",
-  "sampleLocation": {
-    "station_id": "ARG00003",
-    "country": "Argentina",
-    "water_type": "River station",
-    "station_identifier": "Paraguay River - at Puerto Bermejo",
-    "latitude": -26.925888,
-    "longitude": -58.507027
-  },
-  "dateCount": 2,
-  "snapshotCount": 3,
-  "latestSnapshot": {
-    "dateKey": "2025-06-24",
-    "snapshotIndex": 0
-  },
-  "rows": [
-    {
-      "dateKey": "2025-06-24",
-      "snapshotIndex": 0,
-      "label": "2025-06-24 - water 10L - NaCl 1%, Ag 0.001%",
-      "sampleTime": "10:30:00",
-      "depth": 1.2,
-      "volume": {
-        "value": 10,
-        "unit": "L"
-      },
-      "temperature": 20.4,
-      "ph": 7.1,
-      "parameterCount": 2,
-      "summary": "water 10L - NaCl 1%, Ag 0.001%",
-      "parameters": [
-        {
-          "parameterCode": "NaCl",
-          "parameterName": "Sodium Chloride",
-          "unit": "%",
-          "value": 1.0
-        },
-        {
-          "parameterCode": "Ag",
-          "parameterName": "Silver",
-          "unit": "%",
-          "value": 0.001
-        }
-      ]
-    }
-  ],
-  "measurementsByDate": {
-    "2025-06-24": [
-      {
-        "sampleTime": "10:30:00",
-        "depth": 1.2,
-        "volume": {
-          "value": 10,
-          "unit": "L"
-        },
-        "temperature": 20.4,
-        "ph": 7.1,
-        "parameters": {
-          "NaCl": {
-            "parameterCode": "NaCl",
-            "parameterName": "Sodium Chloride",
-            "unit": "%",
-            "value": 1.0
-          },
-          "Ag": {
-            "parameterCode": "Ag",
-            "parameterName": "Silver",
-            "unit": "%",
-            "value": 0.001
-          }
-        },
-        "summary": "water 10L - NaCl 1%, Ag 0.001%"
-      }
-    ]
-  }
 }
 ```
 
@@ -318,41 +214,12 @@ Base URL:
 ### `POST /filters/generate/`
 
 - Auth: required
-- Frontend should first fetch `/measurements/locations/{locationId}/`, let the user choose one row and substances, then post the selected water payload here
 - Body:
 
 ```json
 {
   "studyId": "uuid",
-  "measurementId": "uuid",
-  "measurement": {
-    "dateKey": "2025-06-24",
-    "sampleTime": "10:30:00",
-    "depth": 1.2,
-    "volume": {
-      "value": 10,
-      "unit": "L"
-    },
-    "temperature": 20.4,
-    "ph": 7.1,
-    "summary": "water 10L - NaCl 1%, Ag 0.001%",
-    "parameters": [
-      {
-        "parameterCode": "NaCl",
-        "parameterName": "Sodium Chloride",
-        "unit": "%",
-        "value": 1.0
-      },
-      {
-        "parameterCode": "Ag",
-        "parameterName": "Silver",
-        "unit": "%",
-        "value": 0.001
-      }
-    ]
-  },
-  "targetParameterCodes": ["Ag"],
-  "coreInputs": {}
+  "measurementId": "uuid"
 }
 ```
 
@@ -407,9 +274,7 @@ Base URL:
 ## Important Notes
 
 - Protected endpoints require `Authorization: Bearer <token>`.
-- Frontend should use `/measurements/map/` for the map and `/measurements/locations/{locationId}/` after a map click.
-- The frontend should render its date picker from the `rows` array in the location detail response.
-- `POST /filters/generate/` stores the submitted selected measurement payload inside the experiment payload.
-- The `filterId` returned from `POST /filters/generate/` is the id the frontend should poll on `/filters/{filterId}/status/`.
+- Filter generation requires both `studyId` and `measurementId`.
+- Frontend should use `/measurements/map/` for the map, not old GemStat-specific endpoints.
 - Status updates are polling-based, not websocket-based.
 - Filter generation currently runs end to end but returns placeholder orchestrator output until the real external container is connected.

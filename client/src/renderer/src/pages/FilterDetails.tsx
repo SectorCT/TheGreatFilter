@@ -1,74 +1,94 @@
-import { ArrowLeft, Download, Eye } from 'lucide-react'
-import { toast } from 'sonner'
-import { useMemo, useState } from 'react'
+import { ArrowLeft, Download, Eye, Microscope, Play } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
 import { StatusBadge } from '@renderer/components/StatusBadge'
 import { Button } from '@renderer/components/ui/button'
-import { filterDetailParameters, filters, filterStages } from '@renderer/data/mockData'
-import { exportFilterCsv } from '@renderer/utils/api/endpoints'
+import { exportFilterCsv, getFilterDetails, getFilterStatus } from '@renderer/utils/api/endpoints'
+import { type FilterDetailsSuccessResponse, type FilterStatus } from '@renderer/utils/api/types'
 
 export function FilterDetails(): React.JSX.Element {
   const navigate = useNavigate()
   const { id } = useParams()
-  const filter = useMemo(() => filters.find((item) => item.id === id) ?? filters[0], [id])
-  const [simRunning, setSimRunning] = useState(false)
-  const [csvExporting, setCsvExporting] = useState(false)
-  const [bindingEnergy, setBindingEnergy] = useState(-18.4)
-  const [porosity] = useState(0.82)
-  const [convergence, setConvergence] = useState<number[]>([-5, -8, -10.5, -12.9, -15.1, -16.4])
+  const [status, setStatus] = useState<FilterStatus | null>(null)
+  const [details, setDetails] = useState<FilterDetailsSuccessResponse | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
 
-  const affinity = Math.max(
-    0,
-    Math.min(100, Math.round(((Math.abs(bindingEnergy) * 4 + porosity * 100) / 2.1) * 0.8))
+  useEffect(() => {
+    let isMounted = true
+    const loadStatus = async (): Promise<void> => {
+      if (!id) return
+      setIsLoading(true)
+      setError(null)
+      try {
+        const response = await getFilterStatus(id)
+        if (!isMounted) return
+        setStatus(response.status)
+      } catch (fetchError) {
+        if (!isMounted) return
+        setError(fetchError instanceof Error ? fetchError.message : 'Failed to load filter status.')
+      } finally {
+        if (isMounted) setIsLoading(false)
+      }
+    }
+    void loadStatus()
+    return () => {
+      isMounted = false
+    }
+  }, [id])
+
+  useEffect(() => {
+    let isMounted = true
+    const loadDetails = async (): Promise<void> => {
+      if (!id || status !== 'Success') return
+      try {
+        const response = await getFilterDetails(id)
+        if (!isMounted) return
+        setDetails(response)
+      } catch (fetchError) {
+        if (!isMounted) return
+        setError(fetchError instanceof Error ? fetchError.message : 'Failed to load filter details.')
+      }
+    }
+    void loadDetails()
+    return () => {
+      isMounted = false
+    }
+  }, [id, status])
+
+  const displayStatus = status ?? 'Pending'
+  const createdAt = useMemo(
+    () => (details?.createdAt ? new Date(details.createdAt).toISOString().slice(0, 10) : '-'),
+    [details?.createdAt]
   )
-
-  const recalculateWithQuantum = (): void => {
-    setSimRunning(true)
-    toast.info('Quantum simulation started (VQE)')
-    window.setTimeout(() => {
-      const newEnergy = -1 * (16 + Math.random() * 8)
-      const points = Array.from({ length: 8 }, (_, idx) => -5 - idx * 1.5 - Math.random() * 1.1)
-      setBindingEnergy(Number(newEnergy.toFixed(2)))
-      setConvergence(points.map((point) => Number(point.toFixed(2))))
-      setSimRunning(false)
-      toast.success(`Quantum Simulation Complete: ${Math.max(84, affinity)}% Efficiency Predicted`)
-    }, 1800)
-  }
-
-  const canExportCsv = filter.status === 'Success' || filter.status === 'Complete'
-
-  const triggerCsvDownload = (csvText: string, filename: string): void => {
-    const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' })
-    const objectUrl = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = objectUrl
-    anchor.download = filename
-    document.body.appendChild(anchor)
-    anchor.click()
-    anchor.remove()
-    URL.revokeObjectURL(objectUrl)
-  }
+  const filterInfo = details?.filterInfo ?? {}
+  const summaryEntries = Object.entries(filterInfo)
 
   const handleExportCsv = async (): Promise<void> => {
-    if (!canExportCsv || !filter.id) {
-      toast.error('CSV export is available only for successful filters.')
-      return
-    }
-
-    setCsvExporting(true)
+    if (!id || status !== 'Success') return
+    setIsExporting(true)
+    setError(null)
     try {
-      const response = await exportFilterCsv(filter.id)
-      if (response.kind === 'csvText') {
-        triggerCsvDownload(response.csvText, `filter-${filter.id}.csv`)
+      const result = await exportFilterCsv(id)
+      if (result.kind === 'downloadUrl') {
+        window.open(result.downloadUrl, '_blank', 'noopener,noreferrer')
       } else {
-        window.open(response.downloadUrl, '_blank', 'noopener,noreferrer')
+        const blob = new Blob([result.csvText], { type: 'text/csv;charset=utf-8;' })
+        const href = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = href
+        link.setAttribute('download', `filter-${id}.csv`)
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(href)
       }
-      toast.success('CSV export started.')
-    } catch (error) {
-      toast.error(`CSV export failed: ${String(error)}`)
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : 'Failed to export CSV.')
     } finally {
-      setCsvExporting(false)
+      setIsExporting(false)
     }
   }
 
@@ -84,148 +104,106 @@ export function FilterDetails(): React.JSX.Element {
             <ArrowLeft size={16} strokeWidth={1.5} />
           </button>
           <div>
-            <h1 className="text-xl font-semibold">{filter.name}</h1>
+            <h1 className="text-xl font-semibold">Filter Details</h1>
             <p className="font-mono text-xs text-muted-foreground">
-              Filter {filter.id} · Generated {filter.date}
+              Filter {id ?? '-'} · Generated {createdAt}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => navigate(`/filters/${filter.id}/visualize`)}>
+          <Button variant="outline" onClick={() => navigate(`/filters/${id}/analysis`)} disabled={!id}>
+            <Microscope size={16} strokeWidth={1.5} />
+            Analyze
+          </Button>
+          <Button variant="outline" onClick={() => navigate(`/filters/${id}/visualize`)} disabled={!id}>
             <Eye size={16} strokeWidth={1.5} />
             Visualize
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => void handleExportCsv()}
-            disabled={!canExportCsv || csvExporting}
-          >
+          <Button variant="outline" onClick={() => navigate(`/filters/${id}/simulate`)} disabled={!id}>
+            <Play size={16} strokeWidth={1.5} />
+            Simulate
+          </Button>
+          <Button variant="outline" onClick={() => void handleExportCsv()} disabled={status !== 'Success' || isExporting}>
             <Download size={16} strokeWidth={1.5} />
-            {csvExporting ? 'Exporting...' : 'Export CSV'}
+            {isExporting ? 'Exporting...' : 'Export CSV'}
           </Button>
         </div>
       </div>
+
+      {error ? (
+        <div className="mb-6 rounded-[6px] border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-[6px] border border-border bg-card p-4">
           <p className="scientific-label mb-2">Status</p>
-          <StatusBadge status={filter.status} />
+          <StatusBadge status={displayStatus} />
         </div>
         <div className="rounded-[6px] border border-border bg-card p-4">
-          <p className="scientific-label mb-2">Source</p>
-          <p className="text-sm font-medium">{filter.source}</p>
+          <p className="scientific-label mb-2">Study ID</p>
+          <p className="text-sm font-medium font-mono">{details?.studyId ?? '-'}</p>
         </div>
         <div className="rounded-[6px] border border-border bg-card p-4">
-          <p className="scientific-label mb-2">Generation Time</p>
-          <p className="font-mono text-xs">00:04:21</p>
+          <p className="scientific-label mb-2">Measurement ID</p>
+          <p className="font-mono text-xs">{details?.measurementId ?? '-'}</p>
         </div>
         <div className="rounded-[6px] border border-border bg-card p-4">
-          <p className="scientific-label mb-2">Parameters</p>
-          <p className="font-mono text-xs">{filterDetailParameters.length}</p>
+          <p className="scientific-label mb-2">Created</p>
+          <p className="font-mono text-xs">{createdAt}</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 2xl:grid-cols-2">
-        <div className="rounded-[6px] border border-border bg-card">
-          <div className="border-b border-border px-4 py-3">
-            <h2 className="text-sm font-semibold">Input Parameters</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-[560px] w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-table-header text-left">
-                  <th className="px-4 py-2.5 font-medium text-muted-foreground">Code</th>
-                  <th className="px-4 py-2.5 font-medium text-muted-foreground">Parameter</th>
-                  <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">
-                    Value
-                  </th>
-                  <th className="px-4 py-2.5 font-medium text-muted-foreground">Unit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filterDetailParameters.map((item) => (
-                  <tr key={item.code} className="border-b border-border last:border-0">
-                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                      {item.code}
-                    </td>
-                    <td className="px-4 py-3">{item.name}</td>
-                    <td className="px-4 py-3 text-right font-mono text-xs">{item.value}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                      {item.unit}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="border-t border-border p-4">
-            <Button onClick={recalculateWithQuantum} disabled={simRunning}>
-              {simRunning ? 'Running Quantum Simulation...' : 'Recalculate with Quantum'}
-            </Button>
-          </div>
+      {isLoading ? (
+        <div className="rounded-[6px] border border-border bg-card p-6 text-sm text-muted-foreground">
+          Loading filter status...
         </div>
+      ) : null}
 
+      {!isLoading && status !== 'Success' ? (
+        <div className="rounded-[6px] border border-border bg-card p-6 text-sm text-muted-foreground">
+          Filter is currently <StatusBadge status={displayStatus} />. Details and export unlock when status
+          becomes Success.
+        </div>
+      ) : null}
+
+      {!isLoading && status === 'Success' ? (
         <div className="rounded-[6px] border border-border bg-card">
           <div className="border-b border-border px-4 py-3">
-            <h2 className="text-sm font-semibold">Generated Filter Design</h2>
+            <h2 className="text-sm font-semibold">Filter Payload</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-[620px] w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-table-header text-left">
-                  <th className="px-4 py-2.5 font-medium text-muted-foreground">Stage</th>
-                  <th className="px-4 py-2.5 font-medium text-muted-foreground">Type</th>
-                  <th className="px-4 py-2.5 font-medium text-muted-foreground">Media</th>
-                  <th className="px-4 py-2.5 font-medium text-muted-foreground">Rating</th>
+                  <th className="px-4 py-2.5 font-medium text-muted-foreground">Section</th>
+                  <th className="px-4 py-2.5 font-medium text-muted-foreground">Data</th>
                 </tr>
               </thead>
               <tbody>
-                {filterStages.map((item) => (
-                  <tr key={item.stage} className="border-b border-border last:border-0">
-                    <td className="px-4 py-3 font-mono text-xs">{item.stage}</td>
-                    <td className="px-4 py-3">{item.type}</td>
-                    <td className="px-4 py-3">{item.media}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{item.micron}</td>
+                {summaryEntries.map(([key, value]) => (
+                  <tr key={key} className="border-b border-border last:border-0">
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{key}</td>
+                    <td className="px-4 py-3">
+                      <pre className="overflow-x-auto font-mono text-xs">
+                        {JSON.stringify(value, null, 2)}
+                      </pre>
+                    </td>
                   </tr>
                 ))}
+                {summaryEntries.length === 0 ? (
+                  <tr>
+                    <td colSpan={2} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                      No filter detail payload returned by server.
+                    </td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>
-          <div className="p-4">
-            <div className="relative h-64 rounded-[6px] border border-dashed border-border bg-muted">
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="flex h-40 w-40 items-center justify-center rounded-full border border-border">
-                  <div className="h-24 w-24 rounded-full border border-border" />
-                </div>
-              </div>
-              <div className="absolute right-3 top-3 w-56 rounded-[6px] border border-border bg-card p-3">
-                <p className="scientific-label mb-1">Convergence Plot</p>
-                <svg viewBox="0 0 220 80" className="h-20 w-full">
-                  <polyline
-                    fill="none"
-                    stroke="hsl(var(--status-generating))"
-                    strokeWidth="2"
-                    points={convergence
-                      .map(
-                        (value, idx) =>
-                          `${idx * (220 / (convergence.length - 1))},${72 - (value + 20) * 2.5}`
-                      )
-                      .join(' ')}
-                  />
-                </svg>
-                <div className="mt-2 flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Ebinding</span>
-                  <span className="font-mono">{bindingEnergy} eV</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Binding Affinity</span>
-                  <span className="font-mono">{affinity}%</span>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   )
 }

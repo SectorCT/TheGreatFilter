@@ -1,6 +1,7 @@
 import { FlaskConical, Droplets, LayoutDashboard, LogOut, Plus } from 'lucide-react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { cn } from '@renderer/lib/utils'
+import { clearAccessToken } from '@renderer/utils/api/authTokenStore'
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -48,7 +49,10 @@ export function AppSidebar(): React.JSX.Element {
 
       <div className="border-t border-border p-2 md:p-3">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => {
+            clearAccessToken()
+            navigate('/', { replace: true })
+          }}
           title="Sign Out"
           className="flex w-full items-center justify-center rounded-[6px] px-2 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground md:justify-start md:gap-2 md:px-3"
         >

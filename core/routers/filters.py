@@ -186,12 +186,10 @@ def run_generation(filter_id: str, measurement_id: str, measurement_data: dict) 
                  result["binding_energy"], result["removal_efficiency"],
                  result["method"])
 
-        # Generate atom positions for 3D visualization
-        atom_positions = generate_atom_positions(
+        # Generate atom positions and bonds for 3D visualization
+        atom_positions, connections = generate_atom_positions(
             lattice_spacing=result["lattice_spacing"],
             material_type=result["material_type"],
-            pollutant_symbol=pollutant_symbol,
-            pore_size=result["pore_size"],
         )
 
         filter_info = {
@@ -203,7 +201,9 @@ def run_generation(filter_id: str, measurement_id: str, measurement_data: dict) 
             "removalEfficiency": result["removal_efficiency"],
             "pollutant": pollutant_desc,
             "pollutantSymbol": pollutant_symbol,
+            "method": result.get("method", "hf"),
             "atomPositions": atom_positions,
+            "connections": connections,
         }
 
         sync_update_filter_status(
@@ -225,76 +225,91 @@ def run_generation(filter_id: str, measurement_id: str, measurement_data: dict) 
 def generate_atom_positions(
     lattice_spacing: float,
     material_type: str,
-    pollutant_symbol: str,
-    pore_size: float,
-) -> list[dict]:
-    """Generate 3D atom coordinates for visualization.
+) -> tuple[list[dict], list[dict]]:
+    """Generate 3D atom coordinates and bonds for visualization.
 
-    Convention: last atom in the list is the pollutant.
+    Returns:
+        (atom_positions, connections)
+        atom_positions — list of {id, x, y, z, element}
+        connections    — list of {"from": int, "to": int, "order": int}
     """
     a = lattice_spacing  # angstroms
-    positions = []
 
     if material_type == "cnt":
-        positions = _generate_cnt_positions(a)
+        raw = _generate_cnt_positions(a)
     else:
-        positions = _generate_graphene_positions(a)
+        raw = _generate_graphene_positions(a)
 
-    # Place pollutant above center at pore_size distance
-    pollutant_z = pore_size * 10.0  # nm → angstrom
-    positions.append({
-        "x": round(0.0, 4),
-        "y": round(0.0, 4),
-        "z": round(pollutant_z, 4),
-        "element": pollutant_symbol,
-    })
+    positions: list[dict] = [dict(id=i, **p) for i, p in enumerate(raw)]
 
-    return positions
+    # Compute bonds: k-NN (k=3) on all carbon atoms
+    carbon_idx = [p["id"] for p in positions if p["element"] == "C"]
+    bond_set: set[tuple[int, int]] = set()
+    k = 3
+    for i in carbon_idx:
+        dists: list[tuple[float, int]] = []
+        for j in carbon_idx:
+            if i == j:
+                continue
+            dx = positions[i]["x"] - positions[j]["x"]
+            dy = positions[i]["y"] - positions[j]["y"]
+            dz = positions[i]["z"] - positions[j]["z"]
+            dists.append((dx * dx + dy * dy + dz * dz, j))
+        dists.sort()
+        for _, j in dists[:k]:
+            bond_set.add((min(i, j), max(i, j)))
+
+    connections = [
+        {"from": a, "to": b, "order": 1}
+        for a, b in sorted(bond_set)
+    ]
+
+    return positions, connections
 
 
 def _generate_graphene_positions(a: float) -> list[dict]:
-    """Generate two rings of carbon atoms in a hexagonal graphene sheet.
+    """Graphene patch: 5×3 hexagonal supercell = 30 C atoms.
 
-    Inner ring: 6 atoms at distance a from center.
-    Outer ring: 6 atoms at distance 2a from center.
+    Uses the standard graphene primitive vectors:
+      a1 = (a, 0),  a2 = (a/2, a√3/2)
+    with two-atom basis at (0,0) and (a/2, a/(2√3)).
     """
+    a2x = a * 0.5
+    a2y = a * math.sqrt(3) / 2
+    bx  = a / 2
+    by  = a / (2 * math.sqrt(3))
     positions = []
-
-    # Inner hexagonal ring
-    for i in range(6):
-        angle = math.pi / 3 * i
-        x = a * math.cos(angle)
-        y = a * math.sin(angle)
-        positions.append({"x": round(x, 4), "y": round(y, 4), "z": 0.0, "element": "C"})
-
-    # Outer hexagonal ring (rotated 30°)
-    for i in range(6):
-        angle = math.pi / 3 * i + math.pi / 6
-        x = 2 * a * math.cos(angle)
-        y = 2 * a * math.sin(angle)
-        positions.append({"x": round(x, 4), "y": round(y, 4), "z": 0.0, "element": "C"})
-
+    for n in range(5):
+        for m in range(3):
+            ox = n * a + m * a2x
+            oy = m * a2y
+            positions.append({"x": round(ox,      4), "y": round(oy,      4), "z": 0.0, "element": "C"})
+            positions.append({"x": round(ox + bx, 4), "y": round(oy + by, 4), "z": 0.0, "element": "C"})
     return positions
 
 
 def _generate_cnt_positions(a: float) -> list[dict]:
-    """Generate 12 carbon atoms around a cylinder (carbon nanotube cross-section)."""
-    positions = []
-    radius = a * 3 / (2 * math.pi)  # approximate CNT radius from lattice spacing
+    """CNT segment: 5 rings × 12 C atoms = 60 atoms.
 
-    for i in range(12):
-        angle = 2 * math.pi * i / 12
-        x = radius * math.cos(angle)
-        y = radius * math.sin(angle)
-        # Alternate z positions slightly for tube structure
-        z = (i % 2) * a * 0.5
-        positions.append({
-            "x": round(x, 4),
-            "y": round(y, 4),
-            "z": round(z, 4),
-            "element": "C",
-        })
-
+    Consecutive rings are spaced a/2 apart along z and rotated
+    by half a step (π/12) to reproduce the armchair bond pattern.
+    """
+    N_RINGS    = 5
+    N_PER_RING = 12
+    radius     = a * 3 / (2 * math.pi)
+    z_step     = a * 0.5
+    positions  = []
+    for ring in range(N_RINGS):
+        angle_offset = (ring % 2) * (math.pi / N_PER_RING)
+        z = round(ring * z_step, 4)
+        for i in range(N_PER_RING):
+            angle = 2 * math.pi * i / N_PER_RING + angle_offset
+            positions.append({
+                "x": round(radius * math.cos(angle), 4),
+                "y": round(radius * math.sin(angle), 4),
+                "z": z,
+                "element": "C",
+            })
     return positions
 
 
@@ -327,35 +342,18 @@ def _build_xyz(info: dict, filter_id: str) -> str:
 def _build_sdf(info: dict, filter_id: str) -> str:
     """Build MDL Molfile V2000 (SDF) for 3Dmol.js.
 
-    Bond table uses k-nearest-neighbour (k=3 per C atom) rather than a fixed
-    distance threshold.  k=3 matches sp² hybridisation and works regardless of
-    whether the lattice spacing is at graphene scale (2.46 Å) or CNT scale.
-    The pollutant atom (last in list) is intentionally left unbonded — it is
-    being captured by the filter, not covalently bonded to it.
+    Uses the pre-computed connections stored in filter_info.
+    The pollutant atom (last in list) is intentionally left unbonded.
     """
     atoms = info.get("atomPositions", [])
-    n = len(atoms)
 
-    # k-NN bond detection on carbon atoms only (exclude last atom = pollutant)
-    carbon_indices = [i for i in range(n - 1) if atoms[i]["element"] == "C"]
-    bond_set: set[tuple[int, int]] = set()
-    k = 3  # sp² carbon bonds
-    for i in carbon_indices:
-        dists = []
-        for j in carbon_indices:
-            if i == j:
-                continue
-            dx = atoms[i]["x"] - atoms[j]["x"]
-            dy = atoms[i]["y"] - atoms[j]["y"]
-            dz = atoms[i]["z"] - atoms[j]["z"]
-            dists.append((math.sqrt(dx * dx + dy * dy + dz * dz), j))
-        dists.sort()
-        for _, j in dists[:k]:
-            bond_set.add((min(i, j) + 1, max(i, j) + 1))  # SDF: 1-based indices
+    # connections use 0-based ids; SDF bond block is 1-based
+    bonds = [
+        (c["from"] + 1, c["to"] + 1, c.get("order", 1))
+        for c in info.get("connections", [])
+    ]
 
-    bonds = [(a, b, 1) for a, b in sorted(bond_set)]
-
-    na, nb = n, len(bonds)
+    na, nb = len(atoms), len(bonds)
 
     lines = [
         # Header block (3 lines)
@@ -404,14 +402,16 @@ def _build_csv(info: dict) -> str:
     writer.writerow([])
 
     writer.writerow(["Atom Positions (Angstrom)"])
-    writer.writerow(["Index", "Element", "X", "Y", "Z"])
-    for i, atom in enumerate(info.get("atomPositions", [])):
-        writer.writerow([
-            i + 1,
-            atom["element"],
-            atom["x"],
-            atom["y"],
-            atom["z"],
-        ])
+    writer.writerow(["ID", "Element", "X", "Y", "Z"])
+    for atom in info.get("atomPositions", []):
+        writer.writerow([atom["id"], atom["element"], atom["x"], atom["y"], atom["z"]])
+
+    connections = info.get("connections", [])
+    if connections:
+        writer.writerow([])
+        writer.writerow(["Bonds"])
+        writer.writerow(["From", "To", "Order"])
+        for c in connections:
+            writer.writerow([c["from"], c["to"], c.get("order", 1)])
 
     return output.getvalue()
