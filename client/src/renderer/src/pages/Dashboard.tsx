@@ -1,12 +1,52 @@
 import { ArrowRight, Clock, Droplets, FlaskConical, Plus } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
 import { StatusBadge } from '@renderer/components/StatusBadge'
 import { Button } from '@renderer/components/ui/button'
-import { filters, measurements } from '@renderer/data/mockData'
+import { filters } from '@renderer/data/mockData'
+import { getMeasurements } from '@renderer/utils/api/endpoints'
+import { type MeasurementListItem, type MeasurementListResponse } from '@renderer/utils/api/types'
+
+const resolveMeasurements = (payload: MeasurementListResponse): MeasurementListItem[] => {
+  if (Array.isArray(payload)) {
+    return payload
+  }
+  return payload.results ?? []
+}
+
+const humanizeSource = (source: string): string =>
+  source
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
 
 export function Dashboard(): React.JSX.Element {
   const navigate = useNavigate()
+  const [measurements, setMeasurements] = useState<MeasurementListItem[]>([])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadMeasurements = async (): Promise<void> => {
+      try {
+        const response = await getMeasurements()
+        if (!isMounted) return
+        setMeasurements(resolveMeasurements(response))
+      } catch {
+        if (!isMounted) return
+        setMeasurements([])
+      }
+    }
+
+    loadMeasurements()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const measurementCount = useMemo(() => measurements.length, [measurements])
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
@@ -27,7 +67,12 @@ export function Dashboard(): React.JSX.Element {
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           { label: 'Total Filters', value: '5', trend: '+2 this week', Icon: FlaskConical },
-          { label: 'Measurements', value: '4', trend: '+1 this week', Icon: Droplets },
+          {
+            label: 'Measurements',
+            value: String(measurementCount),
+            trend: measurementCount > 0 ? 'Connected to backend' : 'No measurements yet',
+            Icon: Droplets
+          },
           { label: 'In Progress', value: '2', Icon: Clock },
           { label: 'Completed', value: '3', Icon: FlaskConical }
         ].map(({ label, value, trend, Icon }) => (
@@ -131,18 +176,21 @@ export function Dashboard(): React.JSX.Element {
             <div className="divide-y divide-border">
               {measurements.slice(0, 4).map((item) => (
                 <div
-                  key={item.id}
+                  key={item.measurementId}
                   className="cursor-pointer px-4 py-3 transition-colors hover:bg-table-row-hover"
                   onClick={() => navigate('/measurements')}
                 >
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="font-medium">{item.label}</p>
+                      <p className="font-medium">{item.name ?? 'Untitled measurement'}</p>
                       <p className="text-sm text-muted-foreground">
-                        pH {item.ph} · {item.temp} · {item.params} params
+                        pH {item.ph.toFixed(2)} · {item.temperature.toFixed(2)} C ·{' '}
+                        {humanizeSource(item.source)}
                       </p>
                     </div>
-                    <span className="font-mono text-xs text-muted-foreground">{item.date}</span>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {new Date(item.createdAt).toISOString().slice(0, 10)}
+                    </span>
                   </div>
                 </div>
               ))}
