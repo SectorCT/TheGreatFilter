@@ -30,10 +30,6 @@ class WaterMeasurement(models.Model):
     temperature = models.FloatField(null=True, blank=True)
     ph = models.FloatField(null=True, blank=True)
     parameters_data = models.JSONField(default=dict, blank=True)
-    measurements_by_date = models.JSONField(default=dict, blank=True)
-    latest_snapshot = models.JSONField(default=dict, blank=True)
-    date_count = models.PositiveIntegerField(default=0)
-    snapshot_count = models.PositiveIntegerField(default=0)
     sample_location = models.JSONField(default=dict, blank=True)
     raw_import_data = models.JSONField(default=dict, blank=True)
     source_dataset = models.CharField(max_length=128, blank=True)
@@ -55,7 +51,6 @@ class WaterMeasurement(models.Model):
             models.Index(fields=["source", "created_at"]),
             models.Index(fields=["is_public"]),
             models.Index(fields=["external_station_id", "sample_date"]),
-            models.Index(fields=["external_station_id", "source"]),
         ]
 
     def __str__(self):
@@ -63,30 +58,7 @@ class WaterMeasurement(models.Model):
 
     @property
     def parameter_count(self):
-        if self.parameters_data:
-            return len(self.parameters_data)
-
-        latest_parameters = (self.latest_snapshot or {}).get("parameters") or {}
-        return len(latest_parameters)
-
-    def get_snapshot(self, date_key, snapshot_index=0):
-        snapshots = (self.measurements_by_date or {}).get(date_key) or []
-        if snapshot_index < 0 or snapshot_index >= len(snapshots):
-            raise IndexError("Snapshot index is out of range.")
-        return snapshots[snapshot_index]
-
-    def get_latest_snapshot(self):
-        if self.latest_snapshot:
-            return self.latest_snapshot
-
-        if not self.measurements_by_date:
-            return {}
-
-        latest_date = sorted(self.measurements_by_date.keys())[-1]
-        snapshots = self.measurements_by_date.get(latest_date) or []
-        if not snapshots:
-            return {}
-        return snapshots[-1]
+        return len(self.parameters_data)
 
 
 class MeasurementImportRun(models.Model):

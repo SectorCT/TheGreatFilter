@@ -20,31 +20,9 @@ class GeneratedFilterListSerializer(serializers.ModelSerializer):
         fields = ["filterId", "studyId", "measurementId", "createdAt", "status"]
 
 
-class MeasurementSelectionParameterSerializer(serializers.Serializer):
-    parameterCode = serializers.CharField()
-    parameterName = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    unit = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    value = serializers.FloatField()
-
-
-class MeasurementSelectionSerializer(serializers.Serializer):
-    dateKey = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    sampleTime = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-    depth = serializers.FloatField(required=False, allow_null=True)
-    volume = serializers.JSONField(required=False, allow_null=True)
-    temperature = serializers.FloatField(required=False, allow_null=True)
-    ph = serializers.FloatField(required=False, allow_null=True)
-    parameters = MeasurementSelectionParameterSerializer(many=True, required=False, default=list)
-    summary = serializers.CharField(required=False, allow_blank=True, allow_null=True)
-
-
 class GenerateFilterSerializer(serializers.Serializer):
-
     studyId = serializers.UUIDField()
     measurementId = serializers.UUIDField()
-    measurement = MeasurementSelectionSerializer()
-    targetParameterCodes = serializers.ListField(child=serializers.CharField(), allow_empty=False)
-    coreInputs = serializers.JSONField(required=False, default=dict)
 
     def validate(self, attrs):
         request = self.context["request"]
@@ -59,24 +37,13 @@ class GenerateFilterSerializer(serializers.Serializer):
         if measurement.owner != request.user and not measurement.is_public:
             raise serializers.ValidationError({"measurementId": "Measurement is not accessible."})
 
-        measurement_payload = attrs["measurement"]
-        parameter_codes = {
-            item["parameterCode"]
-            for item in measurement_payload.get("parameters", [])
-            if item.get("parameterCode")
-        }
-        if not parameter_codes:
-            raise serializers.ValidationError({"measurement": "At least one selected parameter is required."})
-
-        missing_targets = sorted(set(attrs["targetParameterCodes"]) - parameter_codes)
-        if missing_targets:
+        if measurement.temperature is None or measurement.ph is None:
             raise serializers.ValidationError(
-                {"targetParameterCodes": f"Unknown target parameters: {', '.join(missing_targets)}."}
+                {"measurementId": "Measurement must include temperature and pH before generation."}
             )
 
         attrs["study"] = study
-        attrs["measurement_record"] = measurement
-        attrs["measurement_payload"] = measurement_payload
+        attrs["measurement"] = measurement
         return attrs
 
     def create(self, validated_data):
@@ -84,15 +51,12 @@ class GenerateFilterSerializer(serializers.Serializer):
         generated_filter = GeneratedFilter.objects.create(
             study=validated_data["study"],
             owner=request.user,
-            measurement=validated_data["measurement_record"],
+            measurement=validated_data["measurement"],
             status=GeneratedFilter.STATUS_PENDING,
             internal_status="accepted",
             experiment_payload={
                 "studyId": str(validated_data["study"].id),
-                "measurementId": str(validated_data["measurement_record"].id),
-                "measurement": validated_data["measurement_payload"],
-                "targetParameterCodes": validated_data["targetParameterCodes"],
-                "coreInputs": validated_data.get("coreInputs", {}),
+                "measurementId": str(validated_data["measurement"].id),
             },
         )
         return generated_filter
