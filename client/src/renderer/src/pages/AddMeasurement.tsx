@@ -65,7 +65,7 @@ export function AddMeasurement(): React.JSX.Element {
   const [selectedMethod, setSelectedMethod] = useState<Method | null>(null)
 
   return (
-    <div className="p-6 lg:p-8">
+    <div className="p-4 md:p-6 lg:p-8">
       <div className="mb-6 flex items-center gap-3">
         <button
           onClick={() => navigate('/dashboard')}
@@ -80,7 +80,7 @@ export function AddMeasurement(): React.JSX.Element {
       </div>
 
       {!selectedMethod ? (
-        <div className="grid max-w-2xl grid-cols-2 gap-3">
+        <div className="grid max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
           {methods.map((method) => {
             const Icon = method.icon
             return (
@@ -99,14 +99,14 @@ export function AddMeasurement(): React.JSX.Element {
       ) : null}
 
       {selectedMethod === 'manual' ? (
-        <div className="max-w-4xl rounded-[6px] border border-border bg-card p-5">
+        <div className="max-w-4xl rounded-[6px] border border-border bg-card p-4 md:p-5">
           <div className="mb-4">
             <label className="scientific-label mb-1 block">Measurement Label</label>
             <input className="h-9 w-full rounded-[6px] border border-input bg-surface-elevated px-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
           </div>
 
           <p className="scientific-label mb-2">Parameters</p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {[
               { label: 'Temperature (deg C)', required: true },
               { label: 'pH', required: true },
@@ -134,7 +134,7 @@ export function AddMeasurement(): React.JSX.Element {
             ))}
           </div>
 
-          <div className="mt-5 flex gap-2">
+          <div className="mt-5 flex flex-wrap gap-2">
             <Button onClick={() => navigate('/dashboard')}>Save Measurement</Button>
             <Button variant="outline" onClick={() => navigate('/dashboard')}>
               Save &amp; Generate Filter
