@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, Eye, Play } from 'lucide-react'
+import { ArrowLeft, Download, Eye, Microscope, Play } from 'lucide-react'
 import { toast } from 'sonner'
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -91,6 +91,10 @@ export function FilterDetails(): React.JSX.Element {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => navigate(`/filters/${filter.id}/analysis`)}>
+            <Microscope size={16} strokeWidth={1.5} />
+            Analyze
+          </Button>
           <Button variant="outline" onClick={() => navigate(`/filters/${filter.id}/visualize`)}>
             <Eye size={16} strokeWidth={1.5} />
             Visualize

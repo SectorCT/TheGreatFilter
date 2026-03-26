@@ -1,3 +1,5 @@
+import type { FilterInfo } from '@renderer/utils/api/types'
+
 export type MoleculeType = {
   code: string
   name: string
@@ -5,6 +7,7 @@ export type MoleculeType = {
   radius: number
   filterable: boolean
   captureStage: number | null
+  spawnWeight: number
 }
 
 export type Particle = {
@@ -23,7 +26,20 @@ export type Particle = {
 export type SimulationStats = {
   totalSpawned: number
   totalPassed: number
+  totalContaminantsSpawned: number
   capturedByType: Record<string, number>
+}
+
+export type SimulationConfig = {
+  moleculeTypes: MoleculeType[]
+  waterRatio: number
+  removalEfficiency: number
+  poreSize?: number
+  materialType?: string
+  temperature?: number
+  ph?: number
+  pollutant?: string
+  bindingEnergy?: number
 }
 
 const SPAWN_RATE = 3
@@ -33,31 +49,120 @@ const FILTER_WIDTH_RATIO = 0.08
 const FILTER_CENTER_RATIO = 0.48
 const MAX_PARTICLES = 600
 
-export const MOLECULE_TYPES: MoleculeType[] = [
-  { code: 'H2O', name: 'Water', color: '#3b82f6', radius: 3, filterable: false, captureStage: null },
-  { code: 'NO3', name: 'Nitrate', color: '#22c55e', radius: 5, filterable: true, captureStage: 3 },
-  { code: 'PO4', name: 'Phosphate', color: '#f59e0b', radius: 5.5, filterable: true, captureStage: 3 },
-  { code: 'FE', name: 'Iron', color: '#ef4444', radius: 6, filterable: true, captureStage: 2 },
-  { code: 'MN', name: 'Manganese', color: '#a855f7', radius: 5, filterable: true, captureStage: 2 },
-  { code: 'CL', name: 'Chloride', color: '#14b8a6', radius: 4.5, filterable: true, captureStage: 4 },
-  { code: 'TDS', name: 'Dissolved Solids', color: '#6b7280', radius: 7, filterable: true, captureStage: 1 }
+const KNOWN_MOLECULES: Record<string, { name: string; color: string; radius: number }> = {
+  NO3: { name: 'Nitrate', color: '#22c55e', radius: 5 },
+  PO4: { name: 'Phosphate', color: '#f59e0b', radius: 5.5 },
+  FE: { name: 'Iron', color: '#ef4444', radius: 6 },
+  MN: { name: 'Manganese', color: '#a855f7', radius: 5 },
+  CL: { name: 'Chloride', color: '#14b8a6', radius: 4.5 },
+  TDS: { name: 'Dissolved Solids', color: '#6b7280', radius: 7 },
+  TURB: { name: 'Turbidity', color: '#78716c', radius: 6.5 },
+  HARD: { name: 'Total Hardness', color: '#d97706', radius: 6 },
+  COND: { name: 'Conductivity', color: '#0ea5e9', radius: 5 },
+  DO: { name: 'Dissolved Oxygen', color: '#06b6d4', radius: 4 }
+}
+
+const FALLBACK_COLORS = ['#f472b6', '#fb923c', '#facc15', '#4ade80', '#818cf8', '#e879f9']
+
+const WATER_TYPE: MoleculeType = {
+  code: 'H2O',
+  name: 'Water',
+  color: '#3b82f6',
+  radius: 3,
+  filterable: false,
+  captureStage: null,
+  spawnWeight: 1
+}
+
+export const DEFAULT_MOLECULE_TYPES: MoleculeType[] = [
+  { ...WATER_TYPE },
+  { code: 'NO3', name: 'Nitrate', color: '#22c55e', radius: 5, filterable: true, captureStage: 3, spawnWeight: 1 },
+  { code: 'PO4', name: 'Phosphate', color: '#f59e0b', radius: 5.5, filterable: true, captureStage: 3, spawnWeight: 1 },
+  { code: 'FE', name: 'Iron', color: '#ef4444', radius: 6, filterable: true, captureStage: 2, spawnWeight: 1 },
+  { code: 'MN', name: 'Manganese', color: '#a855f7', radius: 5, filterable: true, captureStage: 2, spawnWeight: 1 },
+  { code: 'CL', name: 'Chloride', color: '#14b8a6', radius: 4.5, filterable: true, captureStage: 4, spawnWeight: 1 },
+  { code: 'TDS', name: 'Dissolved Solids', color: '#6b7280', radius: 7, filterable: true, captureStage: 1, spawnWeight: 1 }
 ]
 
-function pickMoleculeType(): MoleculeType {
-  const roll = Math.random()
-  if (roll < 0.55) return MOLECULE_TYPES[0]
-  const contaminants = MOLECULE_TYPES.slice(1)
-  return contaminants[Math.floor(Math.random() * contaminants.length)]
+export const DEFAULT_CONFIG: SimulationConfig = {
+  moleculeTypes: DEFAULT_MOLECULE_TYPES,
+  waterRatio: 0.55,
+  removalEfficiency: 100,
+  materialType: 'Filter'
+}
+
+export function buildSimulationConfig(info: FilterInfo): SimulationConfig {
+  const params = info.experimentPayload?.params ?? []
+  const efficiency = info.resultPayload?.removalEfficiency ?? 90
+
+  const contaminants: MoleculeType[] = []
+  let fallbackIdx = 0
+
+  for (const p of params) {
+    const code = p.name.toUpperCase()
+    const known = KNOWN_MOLECULES[code]
+    const color = known?.color ?? FALLBACK_COLORS[fallbackIdx++ % FALLBACK_COLORS.length]
+    const radius = known?.radius ?? 5
+    const name = known?.name ?? p.name
+
+    contaminants.push({
+      code,
+      name,
+      color,
+      radius,
+      filterable: true,
+      captureStage: null,
+      spawnWeight: Math.max(0.01, p.value)
+    })
+  }
+
+  const allTypes: MoleculeType[] = [{ ...WATER_TYPE }, ...contaminants]
+
+  const totalContaminantWeight = contaminants.reduce((s, c) => s + c.spawnWeight, 0)
+  const waterRatio = totalContaminantWeight > 0
+    ? Math.max(0.3, Math.min(0.8, 1 - totalContaminantWeight / (totalContaminantWeight + 50)))
+    : 0.55
+
+  return {
+    moleculeTypes: allTypes,
+    waterRatio,
+    removalEfficiency: efficiency,
+    poreSize: info.filterStructure?.poreSize,
+    materialType: info.filterStructure?.materialType ?? info.summaryMetrics?.materialType,
+    temperature: info.experimentPayload?.temperature,
+    ph: info.experimentPayload?.ph,
+    pollutant: info.resultPayload?.pollutant,
+    bindingEnergy: info.resultPayload?.bindingEnergy
+  }
 }
 
 export class SimulationEngine {
   particles: Particle[] = []
-  stats: SimulationStats = { totalSpawned: 0, totalPassed: 0, capturedByType: {} }
+  stats: SimulationStats = { totalSpawned: 0, totalPassed: 0, totalContaminantsSpawned: 0, capturedByType: {} }
   speed = 1
   paused = false
+  config: SimulationConfig
+
   private width = 0
   private height = 0
   private spawnAccumulator = 0
+  private contaminantCdf: { type: MoleculeType; cumWeight: number }[] = []
+  private totalContaminantWeight = 0
+
+  constructor(config?: SimulationConfig) {
+    this.config = config ?? DEFAULT_CONFIG
+    this.rebuildCdf()
+  }
+
+  private rebuildCdf(): void {
+    const contaminants = this.config.moleculeTypes.filter((m) => m.filterable)
+    let cumWeight = 0
+    this.contaminantCdf = contaminants.map((m) => {
+      cumWeight += m.spawnWeight
+      return { type: m, cumWeight }
+    })
+    this.totalContaminantWeight = cumWeight
+  }
 
   get filterLeft(): number {
     return this.width * FILTER_CENTER_RATIO - (this.width * FILTER_WIDTH_RATIO) / 2
@@ -74,7 +179,7 @@ export class SimulationEngine {
 
   reset(): void {
     this.particles = []
-    this.stats = { totalSpawned: 0, totalPassed: 0, capturedByType: {} }
+    this.stats = { totalSpawned: 0, totalPassed: 0, totalContaminantsSpawned: 0, capturedByType: {} }
     this.spawnAccumulator = 0
   }
 
@@ -96,6 +201,8 @@ export class SimulationEngine {
       this.spawn()
     }
 
+    const captureProb = this.config.removalEfficiency / 100
+
     for (const p of this.particles) {
       if (p.captured) continue
 
@@ -115,12 +222,16 @@ export class SimulationEngine {
 
       if (!p.passed && p.x + p.type.radius >= this.filterLeft && p.x - p.type.radius <= this.filterRight) {
         if (p.type.filterable) {
-          p.captured = true
-          p.captureX = this.filterLeft + Math.random() * (this.filterRight - this.filterLeft)
-          p.captureY = p.y
-          p.vx = 0
-          p.vy = 0
-          this.stats.capturedByType[p.type.code] = (this.stats.capturedByType[p.type.code] ?? 0) + 1
+          if (Math.random() < captureProb) {
+            p.captured = true
+            p.captureX = this.filterLeft + Math.random() * (this.filterRight - this.filterLeft)
+            p.captureY = p.y
+            p.vx = 0
+            p.vy = 0
+            this.stats.capturedByType[p.type.code] = (this.stats.capturedByType[p.type.code] ?? 0) + 1
+          } else {
+            p.passed = true
+          }
         } else {
           p.passed = true
         }
@@ -140,7 +251,10 @@ export class SimulationEngine {
   }
 
   private spawn(): void {
-    const type = pickMoleculeType()
+    const type = this.pickType()
+    if (type.filterable) {
+      this.stats.totalContaminantsSpawned++
+    }
     const particle: Particle = {
       x: -type.radius,
       y: type.radius + Math.random() * (this.height - type.radius * 2),
@@ -155,6 +269,20 @@ export class SimulationEngine {
     }
     this.particles.push(particle)
     this.stats.totalSpawned++
+  }
+
+  private pickType(): MoleculeType {
+    if (Math.random() < this.config.waterRatio) {
+      return this.config.moleculeTypes[0]
+    }
+    if (this.contaminantCdf.length === 0) {
+      return this.config.moleculeTypes[0]
+    }
+    const roll = Math.random() * this.totalContaminantWeight
+    for (const entry of this.contaminantCdf) {
+      if (roll <= entry.cumWeight) return entry.type
+    }
+    return this.contaminantCdf[this.contaminantCdf.length - 1].type
   }
 
   draw(ctx: CanvasRenderingContext2D): void {
@@ -217,13 +345,14 @@ export class SimulationEngine {
     ctx.lineWidth = 1.5
     ctx.strokeRect(fl, 0, fr - fl, h)
 
+    const label = this.config.materialType ?? 'F I L T E R'
     ctx.save()
     ctx.translate((fl + fr) / 2, h / 2)
     ctx.rotate(-Math.PI / 2)
     ctx.font = 'bold 11px ui-sans-serif, system-ui, sans-serif'
     ctx.textAlign = 'center'
     ctx.fillStyle = 'rgba(148,163,184,0.6)'
-    ctx.fillText('F I L T E R', 0, 0)
+    ctx.fillText(label.toUpperCase(), 0, 0)
     ctx.restore()
   }
 
@@ -233,14 +362,11 @@ export class SimulationEngine {
     const r = p.type.radius
     const alpha = p.captured ? 0.7 : p.opacity
 
-    ctx.beginPath()
-    ctx.arc(x, y, r + 2, 0, Math.PI * 2)
-    ctx.fillStyle = p.type.color.replace(')', `, ${alpha * 0.25})`)
-      .replace('rgb(', 'rgba(')
-      .replace('#', '')
     const glowGrad = ctx.createRadialGradient(x, y, r * 0.3, x, y, r + 3)
     glowGrad.addColorStop(0, this.hexToRgba(p.type.color, alpha * 0.4))
     glowGrad.addColorStop(1, this.hexToRgba(p.type.color, 0))
+    ctx.beginPath()
+    ctx.arc(x, y, r + 2, 0, Math.PI * 2)
     ctx.fillStyle = glowGrad
     ctx.fill()
 

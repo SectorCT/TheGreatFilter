@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Pause, Play, RotateCcw } from 'lucide-react'
+import { ArrowLeft, Loader2, Pause, Play, RotateCcw } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
 import { Button } from '@renderer/components/ui/button'
 import { filters } from '@renderer/data/mockData'
-import { SimulationEngine, MOLECULE_TYPES, type SimulationStats } from '@renderer/utils/simulation'
+import { getFilterDetails } from '@renderer/utils/api/endpoints'
+import {
+  SimulationEngine,
+  buildSimulationConfig,
+  DEFAULT_CONFIG,
+  type SimulationConfig,
+  type SimulationStats
+} from '@renderer/utils/simulation'
 
 export function FilterSimulation(): React.JSX.Element {
   const navigate = useNavigate()
@@ -17,20 +24,55 @@ export function FilterSimulation(): React.JSX.Element {
 
   const [playing, setPlaying] = useState(true)
   const [speed, setSpeed] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [simConfig, setSimConfig] = useState<SimulationConfig>(DEFAULT_CONFIG)
   const [stats, setStats] = useState<SimulationStats>({
     totalSpawned: 0,
     totalPassed: 0,
+    totalContaminantsSpawned: 0,
     capturedByType: {}
   })
 
-  const getEngine = useCallback((): SimulationEngine => {
-    if (!engineRef.current) {
-      engineRef.current = new SimulationEngine()
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+
+    getFilterDetails(id ?? '')
+      .then((resp) => {
+        if (cancelled) return
+        const config = buildSimulationConfig(resp.filterInfo)
+        setSimConfig(config)
+
+        if (engineRef.current) {
+          engineRef.current.config = config
+          engineRef.current.reset()
+        }
+      })
+      .catch(() => {
+        /* fallback to DEFAULT_CONFIG already set */
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
     }
-    return engineRef.current
-  }, [])
+  }, [id])
+
+  const getEngine = useCallback(
+    (): SimulationEngine => {
+      if (!engineRef.current) {
+        engineRef.current = new SimulationEngine(simConfig)
+      }
+      return engineRef.current
+    },
+    [simConfig]
+  )
 
   useEffect(() => {
+    if (loading) return
+
     const canvas = canvasRef.current
     if (!canvas) return
 
@@ -38,6 +80,7 @@ export function FilterSimulation(): React.JSX.Element {
     if (!ctx) return
 
     const engine = getEngine()
+    engine.config = simConfig
 
     const syncSize = (): void => {
       const rect = canvas.getBoundingClientRect()
@@ -62,7 +105,10 @@ export function FilterSimulation(): React.JSX.Element {
       engine.draw(ctx)
       frameCount++
       if (frameCount % 10 === 0) {
-        setStats({ ...engine.stats, capturedByType: { ...engine.stats.capturedByType } })
+        setStats({
+          ...engine.stats,
+          capturedByType: { ...engine.stats.capturedByType }
+        })
       }
       rafRef.current = requestAnimationFrame(loop)
     }
@@ -73,38 +119,41 @@ export function FilterSimulation(): React.JSX.Element {
       cancelAnimationFrame(rafRef.current)
       observer.disconnect()
     }
-  }, [getEngine])
+  }, [loading, getEngine, simConfig])
 
   useEffect(() => {
     const engine = engineRef.current
-    if (engine) {
-      engine.paused = !playing
-    }
+    if (engine) engine.paused = !playing
   }, [playing])
 
   useEffect(() => {
     const engine = engineRef.current
-    if (engine) {
-      engine.setSpeed(speed)
-    }
+    if (engine) engine.setSpeed(speed)
   }, [speed])
 
   const handleReset = (): void => {
     const engine = engineRef.current
     if (engine) {
       engine.reset()
-      setStats({ totalSpawned: 0, totalPassed: 0, capturedByType: {} })
+      setStats({ totalSpawned: 0, totalPassed: 0, totalContaminantsSpawned: 0, capturedByType: {} })
     }
   }
 
   const totalCaptured = Object.values(stats.capturedByType).reduce((a, b) => a + b, 0)
-  const contaminantsSpawned = stats.totalSpawned > 0
-    ? Math.round(stats.totalSpawned * 0.45)
-    : 0
   const efficiency =
-    contaminantsSpawned > 0
-      ? Math.min(100, Math.round((totalCaptured / contaminantsSpawned) * 100))
+    stats.totalContaminantsSpawned > 0
+      ? Math.min(100, Math.round((totalCaptured / stats.totalContaminantsSpawned) * 100))
       : 0
+
+  const moleculeTypes = simConfig.moleculeTypes
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 size={32} className="animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden p-4 md:p-6 lg:p-8">
@@ -171,8 +220,53 @@ export function FilterSimulation(): React.JSX.Element {
         </section>
 
         <aside className="min-h-0 overflow-y-auto rounded-[8px] border border-border bg-card p-4">
-          <h2 className="mb-3 text-sm font-semibold">Simulation Stats</h2>
+          <h2 className="mb-3 text-sm font-semibold">Filter Properties</h2>
+          <div className="mb-4 space-y-1.5 text-sm">
+            {simConfig.materialType && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Material</span>
+                <span className="font-mono text-xs">{simConfig.materialType}</span>
+              </div>
+            )}
+            {simConfig.poreSize != null && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Pore Size</span>
+                <span className="font-mono text-xs">{simConfig.poreSize} nm</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Target Efficiency</span>
+              <span className="font-mono text-xs">{simConfig.removalEfficiency}%</span>
+            </div>
+            {simConfig.pollutant && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Target Pollutant</span>
+                <span className="font-mono text-xs">{simConfig.pollutant}</span>
+              </div>
+            )}
+            {simConfig.bindingEnergy != null && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Binding Energy</span>
+                <span className="font-mono text-xs">{simConfig.bindingEnergy} eV</span>
+              </div>
+            )}
+            {simConfig.temperature != null && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Temperature</span>
+                <span className="font-mono text-xs">{simConfig.temperature} °C</span>
+              </div>
+            )}
+            {simConfig.ph != null && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">pH</span>
+                <span className="font-mono text-xs">{simConfig.ph}</span>
+              </div>
+            )}
+          </div>
 
+          <div className="my-3 border-t border-border" />
+
+          <h2 className="mb-3 text-sm font-semibold">Simulation Stats</h2>
           <div className="mb-4 space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Total Spawned</span>
@@ -187,7 +281,7 @@ export function FilterSimulation(): React.JSX.Element {
               <span className="font-mono text-red-400">{totalCaptured}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Filtration Efficiency</span>
+              <span className="text-muted-foreground">Observed Efficiency</span>
               <span className="font-mono font-semibold text-green-400">{efficiency}%</span>
             </div>
           </div>
@@ -196,7 +290,7 @@ export function FilterSimulation(): React.JSX.Element {
 
           <h3 className="mb-2 text-sm font-semibold">Captured by Type</h3>
           <div className="space-y-1.5">
-            {MOLECULE_TYPES.filter((m) => m.filterable).map((m) => (
+            {moleculeTypes.filter((m) => m.filterable).map((m) => (
               <div key={m.code} className="flex items-center gap-2 text-sm">
                 <span
                   className="inline-block h-3 w-3 shrink-0 rounded-full"
@@ -214,7 +308,7 @@ export function FilterSimulation(): React.JSX.Element {
 
           <h3 className="mb-2 text-sm font-semibold">Legend</h3>
           <div className="space-y-1.5">
-            {MOLECULE_TYPES.map((m) => (
+            {moleculeTypes.map((m) => (
               <div key={m.code} className="flex items-center gap-2 text-sm">
                 <span
                   className="inline-block h-3 w-3 shrink-0 rounded-full"
