@@ -2,6 +2,7 @@ import { makeAuthenticatedReq } from '../makeAuthenticatedReq'
 import {
   type FilterDetailsSuccessResponse,
   type FilterListResponse,
+  type FilterInfo,
   type FilterStatusRefreshResponse,
   type GenerateFilterRequest,
   type GenerateFilterResponse
@@ -44,6 +45,41 @@ export const getFilters = async (): Promise<FilterListResponse> => {
   })
 }
 
+const buildFakeFilterInfo = (): FilterInfo => {
+  return {
+    filterStructure: {
+      poreSize: 0.45,
+      layerThickness: 2.1,
+      latticeSpacing: 0.34,
+      materialType: 'Activated Carbon'
+    },
+    experimentPayload: {
+      temperature: 18.5,
+      ph: 7.2,
+      params: [
+        { name: 'NO3', value: 3.2, unit: 'mg/L' },
+        { name: 'PO4', value: 0.05, unit: 'mg/L' },
+        { name: 'FE', value: 0.12, unit: 'mg/L' },
+        { name: 'MN', value: 0.03, unit: 'mg/L' },
+        { name: 'CL', value: 25, unit: 'mg/L' },
+        { name: 'TDS', value: 300, unit: 'mg/L' }
+      ]
+    },
+    resultPayload: {
+      bindingEnergy: -18.4,
+      removalEfficiency: 92,
+      pollutant: 'Nitrate',
+      pollutantSymbol: 'NO3'
+    },
+    summaryMetrics: {
+      parameter_count: 12,
+      removalEfficiency: 92,
+      bindingEnergy: -18.4,
+      materialType: 'Activated Carbon'
+    }
+}
+}
+
 export const getFilterDetails = async (filterId: string): Promise<FilterDetailsSuccessResponse> => {
   return makeAuthenticatedReq<undefined, FilterDetailsSuccessResponse>({
     method: 'GET',
@@ -55,11 +91,7 @@ export const getFilterDetails = async (filterId: string): Promise<FilterDetailsS
       measurementId: `fake-measurement-${Date.now()}`,
       status: 'Success',
       createdAt: new Date().toISOString(),
-      filterInfo: {
-        summaryMetrics: {
-          summary: 'Fake filter details for development'
-        }
-      }
+      filterInfo: buildFakeFilterInfo()
     })
   })
 }
