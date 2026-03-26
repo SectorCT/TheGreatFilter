@@ -32,6 +32,18 @@ const humanizeSource = (source: string): string =>
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
 
+const formatFixed = (value: unknown, digits = 2): string => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
+  return value.toFixed(digits)
+}
+
+const formatDateYmd = (value: unknown): string => {
+  if (typeof value !== 'string') return '-'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return '-'
+  return parsed.toISOString().slice(0, 10)
+}
+
 export function Dashboard(): React.JSX.Element {
   const navigate = useNavigate()
   const [measurements, setMeasurements] = useState<MeasurementListItem[]>([])
@@ -162,7 +174,7 @@ export function Dashboard(): React.JSX.Element {
                     <td className="px-4 py-3 font-medium">Filter {item.filterId.slice(0, 8)}</td>
                     <td className="px-4 py-3">-</td>
                     <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                      {new Date(item.createdAt).toISOString().slice(0, 10)}
+                      {formatDateYmd(item.createdAt)}
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={item.status} />
@@ -226,12 +238,12 @@ export function Dashboard(): React.JSX.Element {
                     <div>
                       <p className="font-medium">{item.name ?? 'Untitled measurement'}</p>
                       <p className="text-sm text-muted-foreground">
-                        pH {item.ph.toFixed(2)} · {item.temperature.toFixed(2)} C ·{' '}
+                        pH {formatFixed(item.ph)} · {formatFixed(item.temperature)} C ·{' '}
                         {humanizeSource(item.source)}
                       </p>
                     </div>
                     <span className="font-mono text-xs text-muted-foreground">
-                      {new Date(item.createdAt).toISOString().slice(0, 10)}
+                      {formatDateYmd(item.createdAt)}
                     </span>
                   </div>
                 </div>
