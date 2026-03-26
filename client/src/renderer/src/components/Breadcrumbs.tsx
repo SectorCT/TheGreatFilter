@@ -5,7 +5,8 @@ const labels: Record<string, string> = {
   dashboard: 'Dashboard',
   filters: 'All Filters',
   measurements: 'Measurements',
-  'add-measurement': 'Add Measurement'
+  'add-measurement': 'Add Measurement',
+  visualize: 'Visualization'
 }
 
 export function Breadcrumbs(): React.JSX.Element {
