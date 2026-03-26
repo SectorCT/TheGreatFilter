@@ -1,0 +1,4 @@
+temperature,ph,parameterCode,value,parameterName,unit
+21.4,7.35,DO,8.7,Dissolved Oxygen,mg/L
+21.4,7.35,COND,410,Conductivity,uS/cm
+21.4,7.35,TURB,1.9,Turbidity,NTU

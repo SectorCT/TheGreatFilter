@@ -20,6 +20,10 @@ The goal is to make page behavior unambiguous while keeping the internal filter 
   - `GET /measurements/map`
   - `GET /measurements/import/csv`
 
+- Map locations metadata (used by the map-based measurement selection page):
+  - `GET /gemstat/locations` (fetch all locations)
+  - `GET /gemstat/station-measurements` (fetch full station measurements history after a marker click)
+
 - Filter generation flows:
   - `POST /filters/generate` (triggered from the dashboard “Generate filter” action)
   - `GET /filters/{filterId}` (filter details + visualization entry point)
@@ -71,8 +75,14 @@ Pages must coordinate using route parameters and shared identifiers. The followi
 ```
 
 Product rule:
-- Manual entry requires `temperature` and `ph`.
-- All generation inputs must include `temperature` and `ph`.
+- The frontend always sends a `measurement` payload using this same structure, but some fields inside it may be missing or empty.
+- Backend must tolerate missing/empty optional fields and should treat them as `null` (or ignore them) rather than failing the whole request.
+- `temperature` and `ph` are required for a measurement to be usable as input for filter generation:
+  - Manual entry validates these fields in the UI.
+  - If a backend receives a create-measurement request without `temperature`/`ph`, it should return a validation error.
+- For items inside `parameters[]`:
+  - `parameterCode` and `value` must be present.
+  - `file`, `parameterName`, and `unit` are optional metadata and may be omitted or empty; the backend should handle this gracefully.
 
 ### 2.2 Filter (List + Status)
 ```json
@@ -121,11 +131,11 @@ Response:
 ```
 
 ### 3.2 Measurements
-#### Create measurement (single endpoint for all sources): `POST /measurements`
+#### Create measurement (manual/lab/map sources): `POST /measurements`
 Request:
 ```json
 {
-  "source": "manual|lab_equipment|gemstat|csv_import",
+  "source": "manual|lab_equipment|gemstat",
   "temperature": "number",
   "ph": "number",
   "parameters": [ { "file":"string", "parameterCode":"string", "parameterName":"string", "unit":"string", "value":"number" } ]
@@ -136,6 +146,21 @@ Response:
 { "measurementId": "string" }
 ```
 
+#### Import measurement from CSV (multipart upload): `POST /measurements/import/csv/`
+Request (`multipart/form-data`):
+- `file` (required): CSV file.
+- `name` (optional): user-friendly measurement label.
+
+Response:
+```json
+{ "measurementId": "string" }
+```
+
+Validation rules:
+- Required measurement fields after parsing: `temperature`, `ph`.
+- Optional fields: all other parameters/metadata.
+- If required fields are missing, backend returns validation errors and measurement is not created.
+
 #### Map snapshot lookup (GemStat): `GET /gemstat/snapshots`
 Used by the map-based measurement selection page.
 Query parameters:
@@ -144,6 +169,25 @@ Response:
 ```json
 { "measurement": { /* Measurement shape */ } }
 ```
+
+#### Map locations metadata: `GET /gemstat/locations`
+Used when the user opens the map so the UI can render all markers and labels.
+Response:
+```json
+{ "locations": [ /* Location metadata objects */ ] }
+```
+For the exact shape, see `docs/contracts/gemstat-map-contract.md`.
+
+#### Map station measurements history: `GET /gemstat/station-measurements`
+Used when the user clicks a specific location marker.
+The response contains all measurements for that station across all dates and all parameter categories (so the UI can group them into graphs).
+Query parameters:
+`locationId=string`
+Response:
+```json
+{ "locationId": "string", "measurements": [ /* rows; see gemstat-map-contract */ ] }
+```
+For the exact row mapping and normalization rules, see `docs/contracts/gemstat-map-contract.md`.
 
 ### 3.3 Filter Generation
 #### Trigger generation: `POST /filters/generate`

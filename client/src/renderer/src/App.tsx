@@ -1,34 +1,37 @@
-import Versions from './components/Versions'
-import electronLogo from './assets/electron.svg'
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { TooltipProvider } from '@renderer/components/ui/tooltip'
+import { Toaster } from '@renderer/components/ui/toaster'
+import { Toaster as Sonner } from '@renderer/components/ui/sonner'
+import { AppLayout } from '@renderer/components/AppLayout'
+import { Auth } from '@renderer/pages/Auth'
+import { Dashboard } from '@renderer/pages/Dashboard'
+import { Filters } from '@renderer/pages/Filters'
+import { FilterDetails } from '@renderer/pages/FilterDetails'
+import { FilterVisualization } from '@renderer/pages/FilterVisualization'
+import { Measurements } from '@renderer/pages/Measurements'
+import { AddMeasurement } from '@renderer/pages/AddMeasurement'
+import { NotFound } from '@renderer/pages/NotFound'
 
 function App(): React.JSX.Element {
-  const ipcHandle = (): void => window.electron.ipcRenderer.send('ping')
-
   return (
-    <>
-      <img alt="logo" className="logo" src={electronLogo} />
-      <div className="creator">Powered by electron-vite</div>
-      <div className="text">
-        Build an Electron app with <span className="react">React</span>
-        &nbsp;and <span className="ts">TypeScript</span>
-      </div>
-      <p className="tip">
-        Please try pressing <code>F12</code> to open the devTool
-      </p>
-      <div className="actions">
-        <div className="action">
-          <a href="https://electron-vite.org/" target="_blank" rel="noreferrer">
-            Documentation
-          </a>
-        </div>
-        <div className="action">
-          <a target="_blank" rel="noreferrer" onClick={ipcHandle}>
-            Send IPC
-          </a>
-        </div>
-      </div>
-      <Versions></Versions>
-    </>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Auth />} />
+          <Route element={<AppLayout />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/filters" element={<Filters />} />
+            <Route path="/filters/:id" element={<FilterDetails />} />
+            <Route path="/filters/:id/visualize" element={<FilterVisualization />} />
+            <Route path="/measurements" element={<Measurements />} />
+            <Route path="/add-measurement" element={<AddMeasurement />} />
+          </Route>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+    </TooltipProvider>
   )
 }
 
