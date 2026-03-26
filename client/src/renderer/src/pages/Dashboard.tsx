@@ -1,12 +1,94 @@
 import { ArrowRight, Clock, Droplets, FlaskConical, Plus } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
 import { StatusBadge } from '@renderer/components/StatusBadge'
 import { Button } from '@renderer/components/ui/button'
-import { filters, measurements } from '@renderer/data/mockData'
+import { getFilters, getMeasurements } from '@renderer/utils/api/endpoints'
+import {
+  type FilterListItem,
+  type FilterListResponse,
+  type MeasurementListItem,
+  type MeasurementListResponse
+} from '@renderer/utils/api/types'
+
+const resolveMeasurements = (payload: MeasurementListResponse): MeasurementListItem[] => {
+  if (Array.isArray(payload)) {
+    return payload
+  }
+  return payload.results ?? []
+}
+
+const resolveFilters = (payload: FilterListResponse): FilterListItem[] => {
+  if (Array.isArray(payload)) {
+    return payload
+  }
+  return payload.results ?? []
+}
+
+const humanizeSource = (source: string): string =>
+  source
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
 
 export function Dashboard(): React.JSX.Element {
   const navigate = useNavigate()
+  const [measurements, setMeasurements] = useState<MeasurementListItem[]>([])
+  const [filters, setFilters] = useState<FilterListItem[]>([])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadMeasurements = async (): Promise<void> => {
+      try {
+        const response = await getMeasurements()
+        if (!isMounted) return
+        setMeasurements(resolveMeasurements(response))
+      } catch {
+        if (!isMounted) return
+        setMeasurements([])
+      }
+    }
+
+    loadMeasurements()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadFilters = async (): Promise<void> => {
+      try {
+        const response = await getFilters()
+        if (!isMounted) return
+        setFilters(resolveFilters(response))
+      } catch {
+        if (!isMounted) return
+        setFilters([])
+      }
+    }
+
+    void loadFilters()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const measurementCount = useMemo(() => measurements.length, [measurements])
+  const filterCount = useMemo(() => filters.length, [filters])
+  const generatingCount = useMemo(
+    () => filters.filter((item) => item.status === 'Generating' || item.status === 'Pending').length,
+    [filters]
+  )
+  const completedCount = useMemo(
+    () => filters.filter((item) => item.status === 'Success').length,
+    [filters]
+  )
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
@@ -26,10 +108,15 @@ export function Dashboard(): React.JSX.Element {
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: 'Total Filters', value: '5', trend: '+2 this week', Icon: FlaskConical },
-          { label: 'Measurements', value: '4', trend: '+1 this week', Icon: Droplets },
-          { label: 'In Progress', value: '2', Icon: Clock },
-          { label: 'Completed', value: '3', Icon: FlaskConical }
+          { label: 'Total Filters', value: String(filterCount), trend: '', Icon: FlaskConical },
+          {
+            label: 'Measurements',
+            value: String(measurementCount),
+            trend: '',
+            Icon: Droplets
+          },
+          { label: 'In Progress', value: String(generatingCount), trend: '', Icon: Clock },
+          { label: 'Completed', value: String(completedCount), trend: '', Icon: FlaskConical }
         ].map(({ label, value, trend, Icon }) => (
           <div key={label} className="rounded-[6px] border border-border bg-card p-4">
             <div className="mb-2 flex items-center justify-between">
@@ -65,17 +152,17 @@ export function Dashboard(): React.JSX.Element {
               <tbody>
                 {filters.slice(0, 5).map((item) => (
                   <tr
-                    key={item.id}
-                    onClick={() => navigate(`/filters/${item.id}`)}
+                    key={item.filterId}
+                    onClick={() => navigate(`/filters/${item.filterId}`)}
                     className={`cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-table-row-hover ${
                       item.status === 'Generating' ? 'shimmer-row' : ''
                     }`}
                   >
-                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{item.id}</td>
-                    <td className="px-4 py-3 font-medium">{item.name}</td>
-                    <td className="px-4 py-3">{item.source}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{item.filterId}</td>
+                    <td className="px-4 py-3 font-medium">Filter {item.filterId.slice(0, 8)}</td>
+                    <td className="px-4 py-3">-</td>
                     <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                      {item.date}
+                      {new Date(item.createdAt).toISOString().slice(0, 10)}
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={item.status} />
@@ -131,18 +218,21 @@ export function Dashboard(): React.JSX.Element {
             <div className="divide-y divide-border">
               {measurements.slice(0, 4).map((item) => (
                 <div
-                  key={item.id}
+                  key={item.measurementId}
                   className="cursor-pointer px-4 py-3 transition-colors hover:bg-table-row-hover"
                   onClick={() => navigate('/measurements')}
                 >
                   <div className="flex items-start justify-between">
                     <div>
-                      <p className="font-medium">{item.label}</p>
+                      <p className="font-medium">{item.name ?? 'Untitled measurement'}</p>
                       <p className="text-sm text-muted-foreground">
-                        pH {item.ph} · {item.temp} · {item.params} params
+                        pH {item.ph.toFixed(2)} · {item.temperature.toFixed(2)} C ·{' '}
+                        {humanizeSource(item.source)}
                       </p>
                     </div>
-                    <span className="font-mono text-xs text-muted-foreground">{item.date}</span>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {new Date(item.createdAt).toISOString().slice(0, 10)}
+                    </span>
                   </div>
                 </div>
               ))}

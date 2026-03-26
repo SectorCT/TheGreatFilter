@@ -29,8 +29,13 @@ export type Measurement = {
   createdAt: string // ISO-8601
   temperature: number
   ph: number
-  parameters: MeasurementParameter[]
+  // Present in detail responses; list responses may omit it.
+  parameters?: MeasurementParameter[]
   sampleLocation?: Record<string, unknown>
+}
+
+export type MeasurementListItem = Omit<Measurement, 'parameters'> & {
+  parameters?: MeasurementParameter[]
 }
 
 // ---------------- Auth ----------------
@@ -180,14 +185,29 @@ export type MeasurementMapResponse = {
 
 export type MeasurementListResponse =
   | {
-      results?: Measurement[]
+      results?: MeasurementListItem[]
       count?: number
     }
-  | Measurement[]
+  | MeasurementListItem[]
 
 // --------------- Filters ----------------
 
 export type FilterStatus = 'Pending' | 'Generating' | 'Success' | 'Failed'
+
+export type FilterListItem = {
+  filterId: string
+  studyId: string
+  measurementId: string
+  status: FilterStatus
+  createdAt: string // ISO-8601
+}
+
+export type FilterListResponse =
+  | {
+      results?: FilterListItem[]
+      count?: number
+    }
+  | FilterListItem[]
 
 export type GenerateFilterRequest = {
   studyId: string

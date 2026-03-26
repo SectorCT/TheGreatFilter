@@ -2,6 +2,7 @@ import { makeAuthenticatedReq } from '../makeAuthenticatedReq'
 import {
   type FilterDetailsSuccessResponse,
   type FilterInfo,
+  type FilterListResponse,
   type FilterStatusRefreshResponse,
   type GenerateFilterRequest,
   type GenerateFilterResponse
@@ -68,6 +69,15 @@ function buildFakeFilterInfo(): FilterInfo {
       materialType: 'Activated Carbon'
     }
   }
+}
+
+export const getFilters = async (): Promise<FilterListResponse> => {
+  return makeAuthenticatedReq<undefined, FilterListResponse>({
+    method: 'GET',
+    path: '/api/filters/',
+    authRequired: true,
+    fake404: { results: [], count: 0 }
+  })
 }
 
 export const getFilterDetails = async (filterId: string): Promise<FilterDetailsSuccessResponse> => {
