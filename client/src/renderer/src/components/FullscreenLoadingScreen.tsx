@@ -16,7 +16,7 @@ export default function FullscreenLoadingScreen({
         background: 'rgba(0,0,0,0.55)',
         color: 'white',
         zIndex: 9999,
-        pointerEvents: 'none',
+        pointerEvents: 'none'
       }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
@@ -27,7 +27,7 @@ export default function FullscreenLoadingScreen({
             borderRadius: '50%',
             border: '4px solid rgba(255,255,255,0.25)',
             borderTopColor: 'rgba(255,255,255,0.95)',
-            animation: 'tgif-spin 1s linear infinite',
+            animation: 'tgif-spin 1s linear infinite'
           }}
         />
         <div style={{ fontWeight: 700 }}>{title ?? 'Loading…'}</div>
@@ -42,4 +42,3 @@ export default function FullscreenLoadingScreen({
     </div>
   )
 }
-

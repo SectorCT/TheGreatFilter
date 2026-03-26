@@ -5,7 +5,7 @@ import {
   type GemstatStationMeasurementsResponse,
   type GemstatSnapshotFetchResponse,
   type GemstatStationMeasurementRow,
-  type Measurement,
+  type Measurement
 } from '../types'
 
 export const getGemstatLocations = async (): Promise<GemstatLocationFetchResponse> => {
@@ -57,7 +57,7 @@ export const getGemstatLocations = async (): Promise<GemstatLocationFetchRespons
 }
 
 export const getGemstatStationMeasurements = async (
-  locationId: string,
+  locationId: string
 ): Promise<GemstatStationMeasurementsResponse> => {
   return makeAuthenticatedReq<undefined, GemstatStationMeasurementsResponse>({
     method: 'GET',
@@ -89,7 +89,7 @@ export const getGemstatStationMeasurements = async (
           parameterCode: 'TEMP',
           value: 12.3,
           unit: 'C',
-          depth: null,
+          depth: null
         }),
         makeFakeStationRow({
           sampleDate: '2025-01-15',
@@ -97,7 +97,7 @@ export const getGemstatStationMeasurements = async (
           parameterCode: 'PH',
           value: 7.4,
           unit: '',
-          depth: null,
+          depth: null
         }),
         makeFakeStationRow({
           sampleDate: '2025-02-01',
@@ -105,16 +105,16 @@ export const getGemstatStationMeasurements = async (
           parameterCode: 'DO',
           value: 8.1,
           unit: 'mg/L',
-          depth: 1.5,
-        }),
-      ],
-    }),
+          depth: 1.5
+        })
+      ]
+    })
   })
 }
 
 export const getGemstatSnapshot = async (
   locationId: string,
-  date: string, // ISO-8601 string per contract
+  date: string // ISO-8601 string per contract
 ): Promise<GemstatSnapshotFetchResponse> => {
   return makeAuthenticatedReq<undefined, GemstatSnapshotFetchResponse>({
     method: 'GET',
@@ -133,12 +133,12 @@ export const getGemstatSnapshot = async (
         ph: 7.4,
         parameters: [
           { parameterCode: 'TEMP', value: 12.3, unit: 'C' },
-          { parameterCode: 'PH', value: 7.4 },
-        ],
+          { parameterCode: 'PH', value: 7.4 }
+        ]
       }
 
       return { measurement }
-    },
+    }
   })
 }
 
@@ -158,6 +158,5 @@ const makeFakeStationRow = (row: {
   valueFlags: null,
   value: row.value,
   unit: row.unit,
-  dataQuality: null,
+  dataQuality: null
 })
-

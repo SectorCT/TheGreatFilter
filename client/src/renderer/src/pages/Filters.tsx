@@ -1,5 +1,6 @@
 import { ArrowRight, FlaskConical } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
 import { StatusBadge } from '@renderer/components/StatusBadge'
 import { Button } from '@renderer/components/ui/button'
 import { filters } from '@renderer/data/mockData'
@@ -9,6 +10,7 @@ export function Filters(): React.JSX.Element {
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
+      <Breadcrumbs />
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">All Filters</h1>
@@ -39,7 +41,9 @@ export function Filters(): React.JSX.Element {
                 <tr
                   key={item.id}
                   onClick={() => navigate(`/filters/${item.id}`)}
-                  className="cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-table-row-hover"
+                  className={`cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-table-row-hover ${
+                    item.status === 'Generating' ? 'shimmer-row' : ''
+                  }`}
                 >
                   <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{item.id}</td>
                   <td className="px-4 py-3 font-medium">{item.name}</td>

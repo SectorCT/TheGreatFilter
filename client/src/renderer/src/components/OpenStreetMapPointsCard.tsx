@@ -29,7 +29,7 @@ const POINT_ICON = divIcon({
 
 const getDefaultCenter = (points: GemstatLocation[]): [number, number] => {
   const first = points.find(
-    (p) => typeof p.latitude === 'number' && typeof p.longitude === 'number',
+    (p) => typeof p.latitude === 'number' && typeof p.longitude === 'number'
   )
   return first ? [first.latitude, first.longitude] : [42.6977, 23.3219]
 }
@@ -57,15 +57,11 @@ const getBoundsExpression = (points: GemstatLocation[]): LatLngBoundsExpression 
 
   return [
     [minLat, minLon],
-    [maxLat, maxLon],
+    [maxLat, maxLon]
   ]
 }
 
-function FitPointsBounds({
-  points,
-}: {
-  points: GemstatLocation[]
-}): null {
+function FitPointsBounds({ points }: { points: GemstatLocation[] }): null {
   const map = useMap()
 
   useEffect(() => {
@@ -109,14 +105,14 @@ const getWrappedRenderPoints = (points: GemstatLocation[]): RenderPoint[] => {
     copies.push(
       { key: `${p.locationId}-w-1`, lat, lon: lon - 360, source: p },
       { key: `${p.locationId}-w0`, lat, lon, source: p },
-      { key: `${p.locationId}-w1`, lat, lon: lon + 360, source: p },
+      { key: `${p.locationId}-w1`, lat, lon: lon + 360, source: p }
     )
   }
   return copies
 }
 
 export default function OpenStreetMapPointsCard({
-  points,
+  points
 }: OpenStreetMapPointsCardProps): React.JSX.Element {
   const center = useMemo(() => getDefaultCenter(points), [points])
   const renderPoints = useMemo(() => getWrappedRenderPoints(points), [points])
@@ -132,7 +128,7 @@ export default function OpenStreetMapPointsCard({
         maxZoom={18}
         maxBounds={[
           [-85, -180],
-          [85, 180],
+          [85, 180]
         ]}
         maxBoundsViscosity={1.0}
         worldCopyJump={true}
@@ -153,7 +149,7 @@ export default function OpenStreetMapPointsCard({
             load: () => {
               // Tile layer triggers `load` repeatedly; we only care that at least one succeeded.
               setTilesLoading(false)
-            },
+            }
           }}
         />
 
@@ -187,7 +183,7 @@ export default function OpenStreetMapPointsCard({
             borderRadius: 10,
             background: 'rgba(0,0,0,0.6)',
             color: 'white',
-            fontSize: 12,
+            fontSize: 12
           }}
         >
           OSM tiles failed to load. Showing markers only.
@@ -196,4 +192,3 @@ export default function OpenStreetMapPointsCard({
     </div>
   )
 }
-

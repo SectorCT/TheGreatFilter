@@ -78,7 +78,6 @@ export const signup = async (request: SignupRequest): Promise<AuthResponse> => {
   setRefreshToken(response.refreshToken)
   return response
 }
-
 export const logout = async (): Promise<void> => {
   await makeAuthenticatedReq<undefined, { success?: boolean }>({
     method: 'POST',
