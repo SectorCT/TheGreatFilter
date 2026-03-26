@@ -9,6 +9,15 @@ from django.utils import timezone
 from measurements.models import MeasurementImportRun, WaterMeasurement
 
 
+def read_text_with_fallback(path):
+    for encoding in ("utf-8-sig", "latin-1"):
+        try:
+            return Path(path).read_text(encoding=encoding)
+        except UnicodeDecodeError:
+            continue
+    return Path(path).read_text(encoding="utf-8-sig", errors="replace")
+
+
 def normalize_decimal(value):
     if value in (None, ""):
         return None
@@ -43,43 +52,41 @@ def build_source_key(station_id, sample_date, sample_time, depth):
 def load_station_metadata(dataset_dir):
     station_file = Path(dataset_dir) / "GEMStat_station_metadata.csv"
     stations = {}
-    with station_file.open("r", encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            station_id = row.get("GEMS Station Number")
-            if not station_id:
-                continue
-            latitude = normalize_decimal(row.get("Latitude"))
-            longitude = normalize_decimal(row.get("Longitude"))
-            stations[station_id] = {
-                "station_id": station_id,
-                "local_station_number": normalize_text(row.get("Local Station Number")),
-                "country": normalize_text(row.get("Country Name")),
-                "water_type": normalize_text(row.get("Water Type")),
-                "station_identifier": normalize_text(row.get("Station Identifier")),
-                "station_narrative": normalize_text(row.get("Station Narrative")),
-                "water_body_name": normalize_text(row.get("Water Body Name")),
-                "main_basin": normalize_text(row.get("Main Basin")),
-                "latitude": latitude,
-                "longitude": longitude,
-            }
+    reader = csv.DictReader(read_text_with_fallback(station_file).splitlines())
+    for row in reader:
+        station_id = row.get("GEMS Station Number")
+        if not station_id:
+            continue
+        latitude = normalize_decimal(row.get("Latitude"))
+        longitude = normalize_decimal(row.get("Longitude"))
+        stations[station_id] = {
+            "station_id": station_id,
+            "local_station_number": normalize_text(row.get("Local Station Number")),
+            "country": normalize_text(row.get("Country Name")),
+            "water_type": normalize_text(row.get("Water Type")),
+            "station_identifier": normalize_text(row.get("Station Identifier")),
+            "station_narrative": normalize_text(row.get("Station Narrative")),
+            "water_body_name": normalize_text(row.get("Water Body Name")),
+            "main_basin": normalize_text(row.get("Main Basin")),
+            "latitude": latitude,
+            "longitude": longitude,
+        }
     return stations
 
 
 def load_parameter_metadata(dataset_dir):
     parameter_file = Path(dataset_dir) / "GEMStat_parameter_metadata.csv"
     metadata = {}
-    with parameter_file.open("r", encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        for row in reader:
-            code = row.get("Parameter Code")
-            if not code:
-                continue
-            metadata[code] = {
-                "parameter_name": normalize_text(row.get("Parameter Name")),
-                "parameter_long_name": normalize_text(row.get("Parameter Long Name")),
-                "parameter_group": normalize_text(row.get("Parameter Group")),
-            }
+    reader = csv.DictReader(read_text_with_fallback(parameter_file).splitlines())
+    for row in reader:
+        code = row.get("Parameter Code")
+        if not code:
+            continue
+        metadata[code] = {
+            "parameter_name": normalize_text(row.get("Parameter Name")),
+            "parameter_long_name": normalize_text(row.get("Parameter Long Name")),
+            "parameter_group": normalize_text(row.get("Parameter Group")),
+        }
     return metadata
 
 
@@ -129,7 +136,7 @@ def parse_uploaded_measurement_csv(file_obj):
     }
 
 
-def sync_gemstat_measurements(dataset_dir, import_run=None):
+def sync_gemstat_measurements(dataset_dir, import_run=None, included_filenames=None, max_snapshots=None):
     dataset_path = Path(dataset_dir)
     if import_run is None:
         import_run = MeasurementImportRun.objects.create(
@@ -155,58 +162,62 @@ def sync_gemstat_measurements(dataset_dir, import_run=None):
     )
 
     files_seen = 0
+    included_filenames = set(included_filenames or [])
     for file_path in dataset_path.glob("*.csv"):
         if file_path.name.startswith("GEMStat_"):
             continue
+        if included_filenames and file_path.name not in included_filenames:
+            continue
         files_seen += 1
-        with file_path.open("r", encoding="utf-8-sig", newline="") as handle:
-            reader = csv.DictReader(handle)
-            for row in reader:
-                station_id = row.get("GEMS Station Number")
-                if not station_id:
-                    continue
+        reader = csv.DictReader(read_text_with_fallback(file_path).splitlines())
+        for row in reader:
+            station_id = row.get("GEMS Station Number")
+            if not station_id:
+                continue
 
-                sample_date = row.get("Sample Date") or row.get("Sample.Date")
-                sample_time = row.get("Sample Time") or row.get("Sample.Time")
-                depth = normalize_decimal(row.get("Depth"))
-                parameter_code = row.get("Parameter Code") or row.get("Parameter.Code")
-                source_key = build_source_key(station_id, sample_date, sample_time, depth)
+            sample_date = row.get("Sample Date") or row.get("Sample.Date")
+            sample_time = row.get("Sample Time") or row.get("Sample.Time")
+            depth = normalize_decimal(row.get("Depth"))
+            parameter_code = row.get("Parameter Code") or row.get("Parameter.Code")
+            source_key = build_source_key(station_id, sample_date, sample_time, depth)
+            if max_snapshots and source_key not in snapshots and len(snapshots) >= max_snapshots:
+                continue
 
-                snapshot = snapshots[source_key]
-                snapshot["external_station_id"] = station_id
-                snapshot["sample_date"] = sample_date
-                snapshot["sample_time"] = sample_time
-                snapshot["depth"] = depth
-                snapshot["sample_location"] = stations.get(station_id, {"station_id": station_id})
+            snapshot = snapshots[source_key]
+            snapshot["external_station_id"] = station_id
+            snapshot["sample_date"] = sample_date
+            snapshot["sample_time"] = sample_time
+            snapshot["depth"] = depth
+            snapshot["sample_location"] = stations.get(station_id, {"station_id": station_id})
 
-                parameter_info = parameter_metadata.get(parameter_code, {})
-                value = normalize_decimal(row.get("Value"))
-                parameter_payload = {
+            parameter_info = parameter_metadata.get(parameter_code, {})
+            value = normalize_decimal(row.get("Value"))
+            parameter_payload = {
+                "file": file_path.name,
+                "parameterCode": parameter_code,
+                "parameterName": parameter_info.get("parameter_name"),
+                "unit": normalize_text(row.get("Unit")),
+                "value": value,
+                "valueFlags": normalize_text(row.get("Value Flags") or row.get("Value.Flags")),
+                "dataQuality": normalize_text(row.get("Data Quality") or row.get("Data.Quality")),
+                "analysisMethodCode": normalize_text(
+                    row.get("Analysis Method Code") or row.get("Analysis.Method.Code")
+                ),
+            }
+
+            if parameter_code and value is not None:
+                snapshot["parameters_data"][parameter_code] = parameter_payload
+                if parameter_code.upper() == "TEMP":
+                    snapshot["temperature"] = value
+                elif parameter_code.lower() == "ph":
+                    snapshot["ph"] = value
+
+            snapshot["raw_rows"].append(
+                {
                     "file": file_path.name,
-                    "parameterCode": parameter_code,
-                    "parameterName": parameter_info.get("parameter_name"),
-                    "unit": normalize_text(row.get("Unit")),
-                    "value": value,
-                    "valueFlags": normalize_text(row.get("Value Flags") or row.get("Value.Flags")),
-                    "dataQuality": normalize_text(row.get("Data Quality") or row.get("Data.Quality")),
-                    "analysisMethodCode": normalize_text(
-                        row.get("Analysis Method Code") or row.get("Analysis.Method.Code")
-                    ),
+                    "row": row,
                 }
-
-                if parameter_code and value is not None:
-                    snapshot["parameters_data"][parameter_code] = parameter_payload
-                    if parameter_code.upper() == "TEMP":
-                        snapshot["temperature"] = value
-                    elif parameter_code.lower() == "ph":
-                        snapshot["ph"] = value
-
-                snapshot["raw_rows"].append(
-                    {
-                        "file": file_path.name,
-                        "row": row,
-                    }
-                )
+            )
 
     created = 0
     updated = 0

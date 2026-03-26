@@ -8,11 +8,27 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("dataset_dir", type=str, help="Path to the GEMStat dataset directory.")
+        parser.add_argument(
+            "--files",
+            nargs="+",
+            default=None,
+            help="Optional list of dataset CSV file names to import.",
+        )
+        parser.add_argument(
+            "--max-snapshots",
+            type=int,
+            default=None,
+            help="Optional cap for the number of grouped measurement snapshots to import.",
+        )
 
     def handle(self, *args, **options):
         dataset_dir = options["dataset_dir"]
         try:
-            import_run = sync_gemstat_measurements(dataset_dir)
+            import_run = sync_gemstat_measurements(
+                dataset_dir,
+                included_filenames=options["files"],
+                max_snapshots=options["max_snapshots"],
+            )
         except FileNotFoundError as exc:
             raise CommandError(str(exc)) from exc
 
