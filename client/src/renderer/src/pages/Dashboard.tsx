@@ -4,11 +4,22 @@ import { useNavigate } from 'react-router-dom'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
 import { StatusBadge } from '@renderer/components/StatusBadge'
 import { Button } from '@renderer/components/ui/button'
-import { filters } from '@renderer/data/mockData'
-import { getMeasurements } from '@renderer/utils/api/endpoints'
-import { type MeasurementListItem, type MeasurementListResponse } from '@renderer/utils/api/types'
+import { getFilters, getMeasurements } from '@renderer/utils/api/endpoints'
+import {
+  type FilterListItem,
+  type FilterListResponse,
+  type MeasurementListItem,
+  type MeasurementListResponse
+} from '@renderer/utils/api/types'
 
 const resolveMeasurements = (payload: MeasurementListResponse): MeasurementListItem[] => {
+  if (Array.isArray(payload)) {
+    return payload
+  }
+  return payload.results ?? []
+}
+
+const resolveFilters = (payload: FilterListResponse): FilterListItem[] => {
   if (Array.isArray(payload)) {
     return payload
   }
@@ -24,6 +35,7 @@ const humanizeSource = (source: string): string =>
 export function Dashboard(): React.JSX.Element {
   const navigate = useNavigate()
   const [measurements, setMeasurements] = useState<MeasurementListItem[]>([])
+  const [filters, setFilters] = useState<FilterListItem[]>([])
 
   useEffect(() => {
     let isMounted = true
@@ -46,7 +58,37 @@ export function Dashboard(): React.JSX.Element {
     }
   }, [])
 
+  useEffect(() => {
+    let isMounted = true
+
+    const loadFilters = async (): Promise<void> => {
+      try {
+        const response = await getFilters()
+        if (!isMounted) return
+        setFilters(resolveFilters(response))
+      } catch {
+        if (!isMounted) return
+        setFilters([])
+      }
+    }
+
+    void loadFilters()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
   const measurementCount = useMemo(() => measurements.length, [measurements])
+  const filterCount = useMemo(() => filters.length, [filters])
+  const generatingCount = useMemo(
+    () => filters.filter((item) => item.status === 'Generating' || item.status === 'Pending').length,
+    [filters]
+  )
+  const completedCount = useMemo(
+    () => filters.filter((item) => item.status === 'Success').length,
+    [filters]
+  )
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
@@ -66,14 +108,15 @@ export function Dashboard(): React.JSX.Element {
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: 'Total Filters', value: '-5', trend: '-2 this week', Icon: FlaskConical },
+          { label: 'Total Filters', value: String(filterCount), trend: '', Icon: FlaskConical },
           {
             label: 'Measurements',
             value: String(measurementCount),
+            trend: '',
             Icon: Droplets
           },
-          { label: 'In Progress', value: '-2', Icon: Clock },
-          { label: 'Completed', value: '-3', Icon: FlaskConical }
+          { label: 'In Progress', value: String(generatingCount), trend: '', Icon: Clock },
+          { label: 'Completed', value: String(completedCount), trend: '', Icon: FlaskConical }
         ].map(({ label, value, trend, Icon }) => (
           <div key={label} className="rounded-[6px] border border-border bg-card p-4">
             <div className="mb-2 flex items-center justify-between">
@@ -109,17 +152,17 @@ export function Dashboard(): React.JSX.Element {
               <tbody>
                 {filters.slice(0, 5).map((item) => (
                   <tr
-                    key={item.id}
-                    onClick={() => navigate(`/filters/${item.id}`)}
+                    key={item.filterId}
+                    onClick={() => navigate(`/filters/${item.filterId}`)}
                     className={`cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-table-row-hover ${
                       item.status === 'Generating' ? 'shimmer-row' : ''
                     }`}
                   >
-                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{item.id}</td>
-                    <td className="px-4 py-3 font-medium">{item.name}</td>
-                    <td className="px-4 py-3">{item.source}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{item.filterId}</td>
+                    <td className="px-4 py-3 font-medium">Filter {item.filterId.slice(0, 8)}</td>
+                    <td className="px-4 py-3">-</td>
                     <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                      {item.date}
+                      {new Date(item.createdAt).toISOString().slice(0, 10)}
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={item.status} />

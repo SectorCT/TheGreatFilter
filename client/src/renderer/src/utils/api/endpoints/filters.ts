@@ -1,6 +1,7 @@
 import { makeAuthenticatedReq } from '../makeAuthenticatedReq'
 import {
   type FilterDetailsSuccessResponse,
+  type FilterListResponse,
   type FilterStatusRefreshResponse,
   type GenerateFilterRequest,
   type GenerateFilterResponse
@@ -31,6 +32,15 @@ export const getFilterStatus = async (filterId: string): Promise<FilterStatusRef
       status: 'Generating',
       updatedAt: new Date().toISOString()
     })
+  })
+}
+
+export const getFilters = async (): Promise<FilterListResponse> => {
+  return makeAuthenticatedReq<undefined, FilterListResponse>({
+    method: 'GET',
+    path: '/api/filters/',
+    authRequired: true,
+    fake404: { results: [], count: 0 }
   })
 }
 

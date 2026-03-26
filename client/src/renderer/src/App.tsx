@@ -8,6 +8,7 @@ import { Dashboard } from '@renderer/pages/Dashboard'
 import { Filters } from '@renderer/pages/Filters'
 import { FilterDetails } from '@renderer/pages/FilterDetails'
 import { FilterVisualization } from '@renderer/pages/FilterVisualization'
+import { NewFilter } from '@renderer/pages/NewFilter'
 import { Measurements } from '@renderer/pages/Measurements'
 import { MeasurementDetails } from '@renderer/pages/MeasurementDetails'
 import { AddMeasurement } from '@renderer/pages/AddMeasurement'
@@ -24,6 +25,7 @@ function App(): React.JSX.Element {
           <Route element={<AppLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/filters" element={<Filters />} />
+            <Route path="/filters/new" element={<NewFilter />} />
             <Route path="/filters/:id" element={<FilterDetails />} />
             <Route path="/filters/:id/visualize" element={<FilterVisualization />} />
             <Route path="/measurements" element={<Measurements />} />

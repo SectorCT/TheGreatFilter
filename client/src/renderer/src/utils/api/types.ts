@@ -194,6 +194,21 @@ export type MeasurementListResponse =
 
 export type FilterStatus = 'Pending' | 'Generating' | 'Success' | 'Failed'
 
+export type FilterListItem = {
+  filterId: string
+  studyId: string
+  measurementId: string
+  status: FilterStatus
+  createdAt: string // ISO-8601
+}
+
+export type FilterListResponse =
+  | {
+      results?: FilterListItem[]
+      count?: number
+    }
+  | FilterListItem[]
+
 export type GenerateFilterRequest = {
   studyId: string
   measurementId: string
