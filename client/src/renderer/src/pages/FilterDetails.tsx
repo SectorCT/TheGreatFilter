@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, Eye } from 'lucide-react'
+import { ArrowLeft, Download, Eye, Microscope, Play } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
@@ -111,9 +111,17 @@ export function FilterDetails(): React.JSX.Element {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => navigate(`/filters/${id}/visualize`)}>
+          <Button variant="outline" onClick={() => navigate(`/filters/${id}/analysis`)} disabled={!id}>
+            <Microscope size={16} strokeWidth={1.5} />
+            Analyze
+          </Button>
+          <Button variant="outline" onClick={() => navigate(`/filters/${id}/visualize`)} disabled={!id}>
             <Eye size={16} strokeWidth={1.5} />
             Visualize
+          </Button>
+          <Button variant="outline" onClick={() => navigate(`/filters/${id}/simulate`)} disabled={!id}>
+            <Play size={16} strokeWidth={1.5} />
+            Simulate
           </Button>
           <Button variant="outline" onClick={() => void handleExportCsv()} disabled={status !== 'Success' || isExporting}>
             <Download size={16} strokeWidth={1.5} />

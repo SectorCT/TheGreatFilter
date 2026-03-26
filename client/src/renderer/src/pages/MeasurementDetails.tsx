@@ -11,6 +11,11 @@ const humanizeSource = (source: string): string =>
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
 
+const formatFixed = (value: unknown, digits = 2): string => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
+  return value.toFixed(digits)
+}
+
 export function MeasurementDetails(): React.JSX.Element {
   const navigate = useNavigate()
   const { id } = useParams()
@@ -91,15 +96,15 @@ export function MeasurementDetails(): React.JSX.Element {
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-[6px] border border-border bg-card p-4">
               <p className="scientific-label mb-2">Source</p>
-              <p className="text-sm font-medium">{humanizeSource(measurement.source)}</p>
+              <p className="text-sm font-medium">{humanizeSource(measurement.source ?? 'unknown')}</p>
             </div>
             <div className="rounded-[6px] border border-border bg-card p-4">
               <p className="scientific-label mb-2">Temperature</p>
-              <p className="font-mono text-sm">{measurement.temperature.toFixed(2)} C</p>
+              <p className="font-mono text-sm">{formatFixed(measurement.temperature)} C</p>
             </div>
             <div className="rounded-[6px] border border-border bg-card p-4">
               <p className="scientific-label mb-2">pH</p>
-              <p className="font-mono text-sm">{measurement.ph.toFixed(2)}</p>
+              <p className="font-mono text-sm">{formatFixed(measurement.ph)}</p>
             </div>
             <div className="rounded-[6px] border border-border bg-card p-4">
               <p className="scientific-label mb-2">Created</p>

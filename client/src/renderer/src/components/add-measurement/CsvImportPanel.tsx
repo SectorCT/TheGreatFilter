@@ -20,7 +20,7 @@ export function CsvImportPanel(): React.JSX.Element {
     setIsSubmitting(true)
     setError(null)
     try {
-      await importMeasurementCsv(file, name.trim() || undefined)
+      await importMeasurementCsv({ file, name: name.trim() || undefined })
       navigate('/dashboard')
     } catch (submitError) {
       const message =

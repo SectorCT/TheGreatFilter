@@ -1,10 +1,12 @@
 import { Minus, Search, Square, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { useNavigate } from 'react-router-dom'
 
 type PulseState = 'idle' | 'running' | 'error'
 
 export function AppTitleBar(): React.JSX.Element {
+  const navigate = useNavigate()
   const [engineMode, setEngineMode] = useState<'Qiskit Aer (Local)' | 'IBM Quantum (Cloud)'>(
     'Qiskit Aer (Local)'
   )
@@ -51,7 +53,7 @@ export function AppTitleBar(): React.JSX.Element {
           H₂
         </div>
         <Menu title="File">
-          <MenuItem onClick={() => toast.info('New measurement initiated')}>
+          <MenuItem onClick={() => navigate('/add-measurement')}>
             New Measurement
           </MenuItem>
           <MenuItem onClick={() => toast.info('Session export placeholder')}>

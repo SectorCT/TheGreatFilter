@@ -1,6 +1,8 @@
 import {
+  Check,
   CheckCircle2,
   ChevronDown,
+  Copy,
   Droplets,
   Loader2,
   RefreshCw,
@@ -12,7 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@renderer/components/ui/button'
 import { cn } from '@renderer/lib/utils'
-import { createMeasurement } from '@renderer/utils/api'
+import { ApiError, createMeasurement } from '@renderer/utils/api'
 
 type UsbStatus =
   | 'idle'
@@ -35,6 +37,95 @@ type DeviceMeasurementPayload = {
     unit?: string
     value: number
   }>
+}
+
+type CopyStatus = 'idle' | 'success' | 'error'
+
+type NormalizedDeviceMeasurementPayload = {
+  name: string
+  source: 'lab_equipment'
+  temperature: number
+  ph: number
+  parameters: Array<{
+    file?: string
+    parameterCode: string
+    parameterName?: string
+    unit?: string
+    value: number
+  }>
+}
+
+const buildUsbMeasurementName = (): string => {
+  const iso = new Date().toISOString().slice(0, 19).replace('T', ' ')
+  return `USB measurement ${iso}`
+}
+
+const asOptionalTrimmedString = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+const normalizeMeasurementPayload = (
+  measurement: DeviceMeasurementPayload
+): NormalizedDeviceMeasurementPayload | null => {
+  const temperature = Number(measurement.temperature)
+  const ph = Number(measurement.ph)
+  if (!Number.isFinite(temperature) || !Number.isFinite(ph)) {
+    return null
+  }
+
+  const parameters = measurement.parameters
+    .map((parameter) => {
+      const parameterCode = asOptionalTrimmedString(parameter.parameterCode)
+      const value = Number(parameter.value)
+      if (!parameterCode || !Number.isFinite(value)) {
+        return null
+      }
+
+      return {
+        parameterCode,
+        value,
+        file: asOptionalTrimmedString(parameter.file),
+        parameterName: asOptionalTrimmedString(parameter.parameterName),
+        unit: asOptionalTrimmedString(parameter.unit),
+      }
+    })
+    .filter((parameter): parameter is NonNullable<typeof parameter> => parameter !== null)
+
+  return {
+    name: buildUsbMeasurementName(),
+    source: 'lab_equipment',
+    temperature,
+    ph,
+    parameters,
+  }
+}
+
+const formatApiErrorMessage = (error: ApiError): string => {
+  const statusLine = `Request failed (${error.status}): POST /api/measurements/`
+  if (!error.responseBodyText) {
+    return statusLine
+  }
+
+  try {
+    const parsed = JSON.parse(error.responseBodyText) as Record<string, unknown>
+    const details = Object.entries(parsed)
+      .map(([key, value]) => {
+        if (Array.isArray(value)) {
+          return `${key}: ${value.join(', ')}`
+        }
+        if (typeof value === 'string') {
+          return `${key}: ${value}`
+        }
+        return `${key}: ${JSON.stringify(value)}`
+      })
+      .join(' | ')
+    return details ? `${statusLine} — ${details}` : statusLine
+  } catch {
+    const compactBody = error.responseBodyText.replace(/\s+/g, ' ').trim()
+    return compactBody ? `${statusLine} — ${compactBody}` : statusLine
+  }
 }
 
 function ConnectionDot({ status }: { status: UsbStatus }): React.JSX.Element {
@@ -87,8 +178,9 @@ export function UsbEntryPanel({ onBack }: { onBack: () => void }): React.JSX.Ele
   const [message, setMessage] = useState('')
   const [measurement, setMeasurement] = useState<DeviceMeasurementPayload | null>(null)
   const [createdMeasurementId, setCreatedMeasurementId] = useState('')
-  const [showRawJson, setShowRawJson] = useState(false)
+  const [copyStatus, setCopyStatus] = useState<CopyStatus>('idle')
   const stopWaitingForWetRef = useRef(false)
+  const copyStatusTimerRef = useRef<number | null>(null)
 
   const labApi = window.labApi ?? window.api
   const isConnected = usbStatus !== 'idle' && usbStatus !== 'error'
@@ -138,6 +230,22 @@ export function UsbEntryPanel({ onBack }: { onBack: () => void }): React.JSX.Ele
       stopWaitingForWetRef.current = true
     }
   }, [])
+
+  useEffect(() => {
+    return () => {
+      if (copyStatusTimerRef.current != null) {
+        window.clearTimeout(copyStatusTimerRef.current)
+      }
+    }
+  }, [])
+
+  const payloadText = useMemo(
+    () => (measurement ? JSON.stringify(measurement, null, 2) : ''),
+    [measurement]
+  )
+  useEffect(() => {
+    setCopyStatus('idle')
+  }, [measurement])
 
   const connectDevice = async (): Promise<void> => {
     if (!labApi) return
@@ -207,22 +315,50 @@ export function UsbEntryPanel({ onBack }: { onBack: () => void }): React.JSX.Ele
 
   const importMeasurement = async (): Promise<void> => {
     if (!measurement) return
+    const normalizedMeasurement = normalizeMeasurementPayload(measurement)
+    if (!normalizedMeasurement) {
+      setUsbStatus('error')
+      setMessage('Import failed: Device payload contains invalid temperature or pH.')
+      return
+    }
     setBusy(true)
     setMessage('')
     try {
-      const result = await createMeasurement({
-        source: measurement.source,
-        temperature: measurement.temperature,
-        ph: measurement.ph,
-        parameters: measurement.parameters,
-      })
+      const result = await createMeasurement(normalizedMeasurement)
       setCreatedMeasurementId(result.measurementId)
       setUsbStatus('imported')
     } catch (error) {
       setUsbStatus('error')
-      setMessage(`Import failed: ${String(error)}`)
+      if (error instanceof ApiError) {
+        setMessage(`Import failed: ${formatApiErrorMessage(error)}`)
+      } else if (error instanceof Error) {
+        setMessage(`Import failed: ${error.message}`)
+      } else {
+        setMessage(`Import failed: ${String(error)}`)
+      }
     } finally {
       setBusy(false)
+    }
+  }
+
+  const handleCopyDetails = async (): Promise<void> => {
+    if (!payloadText) return
+    if (!navigator.clipboard) {
+      setCopyStatus('error')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(payloadText)
+      setCopyStatus('success')
+    } catch {
+      setCopyStatus('error')
+    } finally {
+      if (copyStatusTimerRef.current != null) {
+        window.clearTimeout(copyStatusTimerRef.current)
+      }
+      copyStatusTimerRef.current = window.setTimeout(() => {
+        setCopyStatus('idle')
+      }, 1800)
     }
   }
 
@@ -344,18 +480,59 @@ export function UsbEntryPanel({ onBack }: { onBack: () => void }): React.JSX.Ele
           <div className="rounded-[6px] border border-border">
             <div className="flex items-center justify-between border-b border-border bg-muted/50 px-4 py-2.5">
               <p className="scientific-label">Parameters ({measurement.parameters.length})</p>
-              <button
-                onClick={() => setShowRawJson(!showRawJson)}
-                className="text-xs text-muted-foreground transition-colors hover:text-foreground"
-              >
-                {showRawJson ? 'Table view' : 'Raw JSON'}
-              </button>
+              <Button variant="outline" size="sm" onClick={() => void handleCopyDetails()}>
+                {copyStatus === 'success' ? (
+                  <>
+                    <Check size={14} strokeWidth={1.5} />
+                    Copied
+                  </>
+                ) : copyStatus === 'error' ? (
+                  <>
+                    <Copy size={14} strokeWidth={1.5} />
+                    Copy failed
+                  </>
+                ) : (
+                  <>
+                    <Copy size={14} strokeWidth={1.5} />
+                    Copy details
+                  </>
+                )}
+              </Button>
             </div>
-            {showRawJson ? (
-              <pre className="max-h-72 overflow-auto p-4 font-mono text-xs leading-relaxed">
-                {JSON.stringify(measurement, null, 2)}
-              </pre>
-            ) : null}
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[520px] text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/20 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="px-4 py-2.5 font-medium">Parameter</th>
+                    <th className="px-4 py-2.5 font-medium">Value</th>
+                    <th className="px-4 py-2.5 font-medium">Unit</th>
+                    <th className="px-4 py-2.5 font-medium">Source File</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {measurement.parameters.map((parameter, index) => (
+                    <tr key={`${parameter.parameterCode}-${index}`} className="border-b border-border/70">
+                      <td className="px-4 py-2.5 font-medium">
+                        {parameter.parameterName?.trim() || parameter.parameterCode}
+                      </td>
+                      <td className="px-4 py-2.5 font-mono tabular-nums">{parameter.value}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{parameter.unit?.trim() || '-'}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{parameter.file?.trim() || '-'}</td>
+                    </tr>
+                  ))}
+                  {measurement.parameters.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-4 text-center text-sm text-muted-foreground">
+                        No parameters received from the device.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+              <div className="px-4 py-2 text-xs text-muted-foreground">
+                Detailed payload is hidden for readability. Use `Copy details` for advanced access.
+              </div>
+                </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Button onClick={() => void importMeasurement()} disabled={busy}>

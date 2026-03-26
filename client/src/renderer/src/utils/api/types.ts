@@ -212,6 +212,18 @@ export type FilterListResponse =
 export type GenerateFilterRequest = {
   studyId: string
   measurementId: string
+  measurement: {
+    dateKey?: string
+    sampleTime?: string | null
+    depth?: number | null
+    volume?: Record<string, unknown> | null
+    temperature: number
+    ph: number
+    summary?: string | null
+    parameters: MeasurementParameter[]
+  }
+  targetParameterCodes: string[]
+  coreInputs?: Record<string, unknown>
 }
 
 export type GenerateFilterResponse = {
@@ -225,19 +237,41 @@ export type FilterStatusRefreshResponse = {
   updatedAt: string // ISO-8601
 }
 
+export type FilterInfo = {
+  filterStructure?: {
+    poreSize?: number
+    layerThickness?: number
+    latticeSpacing?: number
+    materialType?: string
+    atomPositions?: Array<{ x: number; y: number; z: number; element: string }>
+  }
+  experimentPayload?: {
+    measurement_id?: string
+    study_id?: string
+    temperature?: number
+    ph?: number
+    params?: Array<{ name: string; value: number; unit?: string | null }>
+  }
+  resultPayload?: {
+    bindingEnergy?: number
+    removalEfficiency?: number
+    pollutant?: string
+    pollutantSymbol?: string
+  }
+  summaryMetrics?: {
+    parameter_count?: number
+    removalEfficiency?: number
+    bindingEnergy?: number
+    materialType?: string
+  }
+}
+
 export type FilterDetailsSuccessResponse = {
   filterId: string
   studyId: string
   measurementId: string
   status: 'Success'
-  filterInfo:
-    | {
-        filterStructure?: Record<string, unknown>
-        experimentPayload?: Record<string, unknown>
-        resultPayload?: Record<string, unknown>
-        summaryMetrics?: Record<string, unknown>
-      }
-    | Record<string, unknown>
+  filterInfo: FilterInfo
   createdAt: string // ISO-8601
 }
 

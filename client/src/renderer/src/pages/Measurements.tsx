@@ -18,6 +18,18 @@ const humanizeSource = (source: string): string =>
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
 
+const formatFixed = (value: unknown, digits = 2): string => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
+  return value.toFixed(digits)
+}
+
+const formatDateYmd = (value: unknown): string => {
+  if (typeof value !== 'string') return '-'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return '-'
+  return parsed.toISOString().slice(0, 10)
+}
+
 export function Measurements(): React.JSX.Element {
   const navigate = useNavigate()
   const [items, setItems] = useState<MeasurementListItem[]>([])
@@ -120,9 +132,9 @@ export function Measurements(): React.JSX.Element {
                 >
                   <td className="px-4 py-3 font-medium">{item.name ?? 'Untitled measurement'}</td>
                   <td className="px-4 py-3">{humanizeSource(item.source)}</td>
-                  <td className="px-4 py-3 text-right font-mono text-xs">{item.ph.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right font-mono text-xs">{formatFixed(item.ph)}</td>
                   <td className="px-4 py-3 text-right font-mono text-xs">
-                    {item.temperature.toFixed(2)}
+                    {formatFixed(item.temperature)}
                   </td>
                   <td className="px-4 py-3 text-right font-mono text-xs">-</td>
                   <td className="px-4 py-3 text-right font-mono text-xs">-</td>
@@ -130,7 +142,7 @@ export function Measurements(): React.JSX.Element {
                     {item.parameters?.length ?? 0}
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                    {new Date(item.createdAt).toISOString().slice(0, 10)}
+                    {formatDateYmd(item.createdAt)}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
                     <ArrowRight size={14} strokeWidth={1.5} />
