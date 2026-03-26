@@ -145,8 +145,11 @@ function Menu({
       <button className="rounded-[6px] px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
         {title}
       </button>
-      <div className="invisible absolute left-0 top-full z-50 mt-1 min-w-56 rounded-[6px] border border-border bg-card p-1 opacity-0 shadow-sm transition group-hover:visible group-hover:opacity-100">
-        {children}
+      <div className="pointer-events-none absolute left-0 top-full h-2 w-full" />
+      <div className="invisible absolute left-0 top-full z-50 min-w-56 pt-1 opacity-0 transition group-hover:visible group-hover:opacity-100">
+        <div className="rounded-[6px] border border-border bg-card p-1 shadow-sm">
+          {children}
+        </div>
       </div>
     </div>
   )
