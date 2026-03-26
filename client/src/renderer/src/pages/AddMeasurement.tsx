@@ -489,6 +489,7 @@ export function AddMeasurement(): React.JSX.Element {
           description="Import water measurement from connected hardware sensor."
         />
       ) : null}
+
       {selectedMethod === 'map' ? (
         <GemstatMapPanel />
       ) : null}
