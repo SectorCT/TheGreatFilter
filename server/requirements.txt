@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+qiskit>=1.0,<2.0
+qiskit-aer>=0.13,<0.16
+qiskit-nature>=0.7,<0.8
+qiskit-algorithms>=0.3,<0.4
+pyscf
+deap
+aiosqlite

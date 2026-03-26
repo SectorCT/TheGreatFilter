@@ -1,0 +1,19 @@
+services:
+  core:
+    build: ./server
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_PATH=/data/h2osim.db
+      - CORE_WORKERS=2
+    volumes:
+      - core-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  core-data:
