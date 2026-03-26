@@ -38,6 +38,14 @@ def normalize_text(value):
     return value or None
 
 
+def normalize_date(value):
+    return normalize_text(value)
+
+
+def normalize_time(value):
+    return normalize_text(value)
+
+
 def build_source_key(station_id, sample_date, sample_time, depth):
     return "|".join(
         [
@@ -47,6 +55,10 @@ def build_source_key(station_id, sample_date, sample_time, depth):
             str(depth) if depth is not None else "",
         ]
     )
+
+
+def build_station_source_key(station_id):
+    return f"station::{station_id or ''}"
 
 
 def load_station_metadata(dataset_dir):
@@ -136,6 +148,83 @@ def parse_uploaded_measurement_csv(file_obj):
     }
 
 
+def extract_volume(row):
+    value = normalize_decimal(
+        row.get("Volume")
+        or row.get("Sample Volume")
+        or row.get("Sample.Volume")
+        or row.get("Water Volume")
+        or row.get("Water.Volume")
+    )
+    unit = normalize_text(
+        row.get("Volume Unit")
+        or row.get("Volume.Unit")
+        or row.get("Sample Volume Unit")
+        or row.get("Sample.Volume.Unit")
+    )
+    if value is None and not unit:
+        return None
+    return {"value": value, "unit": unit or "L"}
+
+
+def format_numeric(value):
+    if value is None:
+        return None
+    return f"{value:g}"
+
+
+def build_snapshot_summary(snapshot):
+    summary_parts = []
+    volume = snapshot.get("volume") or {}
+    volume_value = volume.get("value")
+    if volume_value is not None:
+        volume_text = f"water {format_numeric(volume_value)}{volume.get('unit') or ''}".strip()
+        summary_parts.append(volume_text)
+
+    parameter_text = []
+    for parameter in list((snapshot.get("parameters") or {}).values())[:3]:
+        value = format_numeric(parameter.get("value"))
+        if value is None:
+            continue
+        unit = parameter.get("unit") or ""
+        parameter_text.append(f"{parameter.get('parameterCode') or parameter.get('parameterName')} {value}{unit}".strip())
+
+    if parameter_text:
+        summary_parts.append(", ".join(parameter_text))
+
+    return " - ".join(summary_parts) if summary_parts else "Measurement snapshot"
+
+
+def sort_date_keys(date_keys):
+    return sorted(date_keys, reverse=True)
+
+
+def sort_snapshots(snapshots):
+    return sorted(
+        snapshots,
+        key=lambda item: (
+            item.get("sampleTime") or "",
+            item.get("depth") if item.get("depth") is not None else -1,
+        ),
+        reverse=True,
+    )
+
+
+def build_latest_snapshot_cache(date_key, snapshot_index, snapshot):
+    return {
+        "dateKey": date_key,
+        "snapshotIndex": snapshot_index,
+        "sampleTime": snapshot.get("sampleTime"),
+        "depth": snapshot.get("depth"),
+        "volume": snapshot.get("volume"),
+        "temperature": snapshot.get("temperature"),
+        "ph": snapshot.get("ph"),
+        "parameters": snapshot.get("parameters", {}),
+        "summary": snapshot.get("summary"),
+        "parameterCount": len(snapshot.get("parameters") or {}),
+    }
+
+
 def sync_gemstat_measurements(dataset_dir, import_run=None, included_filenames=None, max_snapshots=None):
     dataset_path = Path(dataset_dir)
     if import_run is None:
@@ -147,17 +236,14 @@ def sync_gemstat_measurements(dataset_dir, import_run=None, included_filenames=N
     stations = load_station_metadata(dataset_path)
     parameter_metadata = load_parameter_metadata(dataset_path)
 
-    snapshots = defaultdict(
+    station_groups = defaultdict(
         lambda: {
             "external_station_id": "",
-            "sample_date": None,
-            "sample_time": None,
-            "depth": None,
             "sample_location": {},
-            "temperature": None,
-            "ph": None,
-            "parameters_data": {},
-            "raw_rows": [],
+            "snapshots": {},
+            "source_files": set(),
+            "row_count": 0,
+            "preview_rows": [],
         }
     )
 
@@ -168,34 +254,58 @@ def sync_gemstat_measurements(dataset_dir, import_run=None, included_filenames=N
             continue
         if included_filenames and file_path.name not in included_filenames:
             continue
+
         files_seen += 1
         reader = csv.DictReader(read_text_with_fallback(file_path).splitlines())
         for row in reader:
-            station_id = row.get("GEMS Station Number")
+            station_id = normalize_text(row.get("GEMS Station Number"))
             if not station_id:
                 continue
 
-            sample_date = row.get("Sample Date") or row.get("Sample.Date")
-            sample_time = row.get("Sample Time") or row.get("Sample.Time")
+            sample_date = normalize_date(row.get("Sample Date") or row.get("Sample.Date"))
+            sample_time = normalize_time(row.get("Sample Time") or row.get("Sample.Time"))
             depth = normalize_decimal(row.get("Depth"))
-            parameter_code = row.get("Parameter Code") or row.get("Parameter.Code")
-            source_key = build_source_key(station_id, sample_date, sample_time, depth)
-            if max_snapshots and source_key not in snapshots and len(snapshots) >= max_snapshots:
-                continue
+            snapshot_key = build_source_key(station_id, sample_date, sample_time, depth)
+            if max_snapshots and snapshot_key not in station_groups[station_id]["snapshots"]:
+                current_snapshot_total = sum(len(group["snapshots"]) for group in station_groups.values())
+                if current_snapshot_total >= max_snapshots:
+                    continue
 
-            snapshot = snapshots[source_key]
-            snapshot["external_station_id"] = station_id
-            snapshot["sample_date"] = sample_date
-            snapshot["sample_time"] = sample_time
-            snapshot["depth"] = depth
-            snapshot["sample_location"] = stations.get(station_id, {"station_id": station_id})
+            station_group = station_groups[station_id]
+            station_group["external_station_id"] = station_id
+            station_group["sample_location"] = stations.get(station_id, {"station_id": station_id})
+            station_group["source_files"].add(file_path.name)
+            station_group["row_count"] += 1
+            if len(station_group["preview_rows"]) < 25:
+                station_group["preview_rows"].append({"file": file_path.name, "row": row})
 
+            snapshot = station_group["snapshots"].setdefault(
+                snapshot_key,
+                {
+                    "dateKey": sample_date or "unknown",
+                    "sampleTime": sample_time,
+                    "depth": depth,
+                    "volume": extract_volume(row),
+                    "temperature": None,
+                    "ph": None,
+                    "parameters": {},
+                    "rawRowCount": 0,
+                },
+            )
+
+            snapshot["rawRowCount"] += 1
+            if snapshot.get("volume") is None:
+                snapshot["volume"] = extract_volume(row)
+
+            parameter_code = normalize_text(row.get("Parameter Code") or row.get("Parameter.Code"))
             parameter_info = parameter_metadata.get(parameter_code, {})
             value = normalize_decimal(row.get("Value"))
             parameter_payload = {
                 "file": file_path.name,
                 "parameterCode": parameter_code,
                 "parameterName": parameter_info.get("parameter_name"),
+                "parameterLongName": parameter_info.get("parameter_long_name"),
+                "parameterGroup": parameter_info.get("parameter_group"),
                 "unit": normalize_text(row.get("Unit")),
                 "value": value,
                 "valueFlags": normalize_text(row.get("Value Flags") or row.get("Value.Flags")),
@@ -206,29 +316,42 @@ def sync_gemstat_measurements(dataset_dir, import_run=None, included_filenames=N
             }
 
             if parameter_code and value is not None:
-                snapshot["parameters_data"][parameter_code] = parameter_payload
+                snapshot["parameters"][parameter_code] = parameter_payload
                 if parameter_code.upper() == "TEMP":
                     snapshot["temperature"] = value
                 elif parameter_code.lower() == "ph":
                     snapshot["ph"] = value
 
-            snapshot["raw_rows"].append(
-                {
-                    "file": file_path.name,
-                    "row": row,
-                }
-            )
-
     created = 0
     updated = 0
     skipped = 0
 
-    for source_key, snapshot in snapshots.items():
-        location = snapshot["sample_location"]
+    for station_id, station_group in station_groups.items():
+        measurements_by_date = {}
+        for snapshot in station_group["snapshots"].values():
+            snapshot["summary"] = build_snapshot_summary(snapshot)
+            date_key = snapshot.get("dateKey") or "unknown"
+            measurements_by_date.setdefault(date_key, []).append(snapshot)
+
+        for date_key, snapshots in list(measurements_by_date.items()):
+            measurements_by_date[date_key] = sort_snapshots(snapshots)
+
+        latest_snapshot = {}
+        latest_date = None
+        latest_snapshot_record = None
+        for date_key in sort_date_keys(measurements_by_date.keys()):
+            date_snapshots = measurements_by_date[date_key]
+            if not date_snapshots:
+                continue
+            latest_date = date_key
+            latest_snapshot_record = date_snapshots[0]
+            latest_snapshot = build_latest_snapshot_cache(date_key, 0, latest_snapshot_record)
+            break
+
+        snapshot_count = sum(len(snapshots) for snapshots in measurements_by_date.values())
+        location = station_group["sample_location"]
         hash_payload = {
-            "temperature": snapshot["temperature"],
-            "ph": snapshot["ph"],
-            "parameters_data": snapshot["parameters_data"],
+            "measurements_by_date": measurements_by_date,
             "sample_location": location,
         }
         import_hash = hashlib.sha256(
@@ -237,27 +360,33 @@ def sync_gemstat_measurements(dataset_dir, import_run=None, included_filenames=N
 
         defaults = {
             "owner": None,
-            "name": (
-                f"{location.get('station_identifier') or snapshot['external_station_id']} "
-                f"{snapshot['sample_date']} {snapshot['sample_time'] or ''}"
-            ).strip(),
+            "name": location.get("station_identifier") or station_id,
             "source": WaterMeasurement.SOURCE_GEMSTAT,
-            "temperature": snapshot["temperature"],
-            "ph": snapshot["ph"],
-            "parameters_data": snapshot["parameters_data"],
+            "temperature": (latest_snapshot_record or {}).get("temperature"),
+            "ph": (latest_snapshot_record or {}).get("ph"),
+            "parameters_data": (latest_snapshot_record or {}).get("parameters", {}),
+            "measurements_by_date": measurements_by_date,
+            "latest_snapshot": latest_snapshot,
+            "date_count": len(measurements_by_date),
+            "snapshot_count": snapshot_count,
             "sample_location": location,
-            "raw_import_data": {"rows": snapshot["raw_rows"][:25], "row_count": len(snapshot["raw_rows"])},
+            "raw_import_data": {
+                "rows": station_group["preview_rows"],
+                "row_count": station_group["row_count"],
+                "source_files": sorted(station_group["source_files"]),
+            },
             "source_dataset": "gemstat",
-            "external_station_id": snapshot["external_station_id"],
-            "sample_date": snapshot["sample_date"],
-            "sample_time": snapshot["sample_time"] or None,
-            "depth": snapshot["depth"],
+            "external_station_id": station_group["external_station_id"],
+            "sample_date": latest_date,
+            "sample_time": (latest_snapshot_record or {}).get("sampleTime") or None,
+            "depth": (latest_snapshot_record or {}).get("depth"),
+            "source_key": build_station_source_key(station_group["external_station_id"]),
             "import_hash": import_hash,
             "is_public": True,
         }
 
         measurement, was_created = WaterMeasurement.objects.get_or_create(
-            source_key=source_key,
+            source_key=defaults["source_key"],
             defaults=defaults,
         )
         if was_created:
