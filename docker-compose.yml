@@ -1,0 +1,112 @@
+# Full-stack compose — runs core + server + all dependencies on one network.
+#
+# Setup:
+#   cp server/env.example server/.env
+#   # fill in SECRET_KEY, DB_PASSWORD, and any other required values
+#   docker compose up --build
+#
+# Services:
+#   core    — FastAPI quantum simulation engine  (internal :8000, exposed :8001)
+#   db      — PostgreSQL for the Django backend  (exposed :5434)
+#   redis   — Celery broker                      (exposed :6379)
+#   web     — Django REST API                    (exposed :8000)
+#   worker  — Celery worker that calls core
+
+services:
+
+  # ── Simulation Core ──────────────────────────────────────────────────────
+  core:
+    build: ./core
+    expose:
+      - "8000"
+    ports:
+      - "8001:8000"   # dev/debug access; web/worker reach it via service name
+    environment:
+      - DB_PATH=/data/h2osim.db
+      - CORE_WORKERS=2
+    volumes:
+      - core-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks: [qbit_internal]
+
+  # ── Public Backend ───────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data/
+    env_file:
+      - ./server/.env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d thegreatfilter"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [qbit_internal]
+
+  redis:
+    image: redis:7-alpine
+    # No host port — only accessible within qbit_internal network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [qbit_internal]
+
+  web:
+    build: ./server
+    volumes:
+      - ./server/backend:/home/app/backend/
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      core:
+        condition: service_healthy
+    env_file:
+      - ./server/.env
+    environment:
+      DB_HOST: db
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      CORE_SERVICE_URL: http://core:8000
+    networks: [qbit_internal]
+
+  worker:
+    build: ./server
+    volumes:
+      - ./server/backend:/home/app/backend/
+    command: celery -A backend worker --loglevel=info -Q simulation,default
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      core:
+        condition: service_healthy
+    env_file:
+      - ./server/.env
+    environment:
+      DB_HOST: db
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      CORE_SERVICE_URL: http://core:8000
+    networks: [qbit_internal]
+
+volumes:
+  core-data:
+  pgdata:
+
+networks:
+  qbit_internal:
+    driver: bridge
