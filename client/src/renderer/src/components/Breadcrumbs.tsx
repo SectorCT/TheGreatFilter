@@ -22,7 +22,7 @@ export function Breadcrumbs(): React.JSX.Element {
         Dashboard
       </Link>
       {segments.map((segment, index) => {
-        const href = `/${rawSegments.slice(0, index + 2).join('/')}`
+        const href = `/${rawSegments.slice(0, index + 1).join('/')}`
         return (
           <span key={href} className="flex items-center gap-1">
             <ChevronRight size={12} strokeWidth={1.5} />

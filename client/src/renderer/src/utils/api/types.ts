@@ -212,6 +212,18 @@ export type FilterListResponse =
 export type GenerateFilterRequest = {
   studyId: string
   measurementId: string
+  measurement: {
+    dateKey?: string
+    sampleTime?: string | null
+    depth?: number | null
+    volume?: Record<string, unknown> | null
+    temperature: number
+    ph: number
+    summary?: string | null
+    parameters: MeasurementParameter[]
+  }
+  targetParameterCodes: string[]
+  coreInputs?: Record<string, unknown>
 }
 
 export type GenerateFilterResponse = {

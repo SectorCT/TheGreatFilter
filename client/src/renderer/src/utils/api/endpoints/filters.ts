@@ -1,8 +1,13 @@
 import { makeAuthenticatedReq } from '../makeAuthenticatedReq'
 import {
   type FilterDetailsSuccessResponse,
+<<<<<<< HEAD
   type FilterInfo,
   type FilterListResponse,
+=======
+  type FilterListResponse,
+  type FilterInfo,
+>>>>>>> frontend
   type FilterStatusRefreshResponse,
   type GenerateFilterRequest,
   type GenerateFilterResponse
@@ -36,7 +41,20 @@ export const getFilterStatus = async (filterId: string): Promise<FilterStatusRef
   })
 }
 
+<<<<<<< HEAD
 function buildFakeFilterInfo(): FilterInfo {
+=======
+export const getFilters = async (): Promise<FilterListResponse> => {
+  return makeAuthenticatedReq<undefined, FilterListResponse>({
+    method: 'GET',
+    path: '/api/filters/',
+    authRequired: true,
+    fake404: { results: [], count: 0 }
+  })
+}
+
+const buildFakeFilterInfo = (): FilterInfo => {
+>>>>>>> frontend
   return {
     filterStructure: {
       poreSize: 0.45,
@@ -68,6 +86,7 @@ function buildFakeFilterInfo(): FilterInfo {
       bindingEnergy: -18.4,
       materialType: 'Activated Carbon'
     }
+<<<<<<< HEAD
   }
 }
 
@@ -78,6 +97,9 @@ export const getFilters = async (): Promise<FilterListResponse> => {
     authRequired: true,
     fake404: { results: [], count: 0 }
   })
+=======
+}
+>>>>>>> frontend
 }
 
 export const getFilterDetails = async (filterId: string): Promise<FilterDetailsSuccessResponse> => {
