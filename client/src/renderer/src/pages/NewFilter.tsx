@@ -4,21 +4,8 @@ import { toast } from 'sonner'
 import { useNavigate } from 'react-router-dom'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
 import { Button } from '@renderer/components/ui/button'
-import { getMeasurements } from '@renderer/utils/api/endpoints'
+import { getMeasurementById, getMeasurements } from '@renderer/utils/api/endpoints'
 import { type MeasurementListItem, type MeasurementListResponse } from '@renderer/utils/api/types'
-
-const IMPURITY_OPTIONS = [
-  'Lead',
-  'Mercury',
-  'Arsenic',
-  'Cadmium',
-  'Nitrates',
-  'Phosphates',
-  'Chlorides',
-  'Sulfates',
-  'Microplastics',
-  'Bacteria'
-]
 
 const resolveMeasurements = (payload: MeasurementListResponse): MeasurementListItem[] => {
   if (Array.isArray(payload)) return payload
@@ -31,6 +18,7 @@ export function NewFilter(): React.JSX.Element {
   const [selectedMeasurementId, setSelectedMeasurementId] = useState('')
   const [selectedImpurities, setSelectedImpurities] = useState<string[]>([])
   const [impurityToAdd, setImpurityToAdd] = useState('')
+  const [measurementImpurities, setMeasurementImpurities] = useState<string[]>([])
   const [isLoadingMeasurements, setIsLoadingMeasurements] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -67,9 +55,47 @@ export function NewFilter(): React.JSX.Element {
 
   const canSubmit = !!selectedMeasurementId && selectedImpurities.length > 0
   const availableImpurities = useMemo(
-    () => IMPURITY_OPTIONS.filter((impurity) => !selectedImpurities.includes(impurity)),
-    [selectedImpurities]
+    () => measurementImpurities.filter((impurity) => !selectedImpurities.includes(impurity)),
+    [measurementImpurities, selectedImpurities]
   )
+
+  useEffect(() => {
+    let isMounted = true
+    const loadMeasurementImpurities = async (): Promise<void> => {
+      if (!selectedMeasurementId) {
+        setMeasurementImpurities([])
+        setSelectedImpurities([])
+        return
+      }
+
+      try {
+        const detail = await getMeasurementById(selectedMeasurementId)
+        if (!isMounted) return
+        const derived = Array.from(
+          new Set(
+            (detail.parameters ?? [])
+              .filter((parameter) => !['TEMP', 'PH'].includes(parameter.parameterCode.toUpperCase()))
+              .map(
+                (parameter) =>
+                  parameter.parameterName?.trim() || parameter.parameterCode?.trim() || 'Unknown'
+              )
+              .filter((value) => value.length > 0)
+          )
+        )
+        setMeasurementImpurities(derived)
+        setSelectedImpurities((prev) => prev.filter((value) => derived.includes(value)))
+      } catch {
+        if (!isMounted) return
+        setMeasurementImpurities([])
+        setSelectedImpurities([])
+      }
+    }
+
+    void loadMeasurementImpurities()
+    return () => {
+      isMounted = false
+    }
+  }, [selectedMeasurementId])
 
   const handleAddImpurity = (value: string): void => {
     if (!value) return
@@ -128,7 +154,7 @@ export function NewFilter(): React.JSX.Element {
                 {measurements.length === 0 ? <option value="">No measurements available</option> : null}
                 {measurements.map((measurement) => (
                   <option key={measurement.measurementId} value={measurement.measurementId}>
-                    {(measurement.name ?? 'Untitled measurement') + ` (${measurement.measurementId.slice(0, 8)})`}
+                    {measurement.name ?? 'Untitled measurement'}
                   </option>
                 ))}
               </select>
@@ -147,8 +173,11 @@ export function NewFilter(): React.JSX.Element {
                   value={impurityToAdd}
                   onChange={(e) => handleAddImpurity(e.target.value)}
                   className="h-9 w-full rounded-[6px] border border-input bg-surface-elevated px-3 text-sm"
+                  disabled={availableImpurities.length === 0}
                 >
-                  <option value="">Select impurity...</option>
+                  <option value="">
+                    {availableImpurities.length === 0 ? 'No contaminants available' : 'Select impurity...'}
+                  </option>
                   {availableImpurities.map((impurity) => (
                     <option key={impurity} value={impurity}>
                       {impurity}
