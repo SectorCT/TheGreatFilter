@@ -343,6 +343,15 @@ export function NewFilter(): React.JSX.Element {
                 >
                   Clear
                 </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setSelectedImpurities(IMPURITY_OPTIONS)}
+                  disabled={selectedImpurities.length === IMPURITY_OPTIONS.length}
+                  title="Select every impurity option"
+                >
+                  All
+                </Button>
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
                 {selectedCodeLabels.length === 0 ? (

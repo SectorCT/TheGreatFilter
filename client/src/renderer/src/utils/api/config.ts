@@ -1,8 +1,12 @@
 const joinUrl = (baseUrl: string, path: string): string => {
   if (!baseUrl) return path
   const trimmedBase = baseUrl.replace(/\/+$/, '')
-  const trimmedPath = path.startsWith('/') ? path : `/${path}`
-  return `${trimmedBase}${trimmedPath}`
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`
+  const baseHasApiSuffix = /\/api$/i.test(trimmedBase)
+  const pathHasApiPrefix = /^\/api(\/|$)/i.test(normalizedPath)
+  const finalPath =
+    baseHasApiSuffix && pathHasApiPrefix ? normalizedPath.replace(/^\/api/i, '') : normalizedPath
+  return `${trimmedBase}${finalPath}`
 }
 
 export const API_BASE_URL: string =
