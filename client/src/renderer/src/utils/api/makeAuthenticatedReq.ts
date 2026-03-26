@@ -32,7 +32,7 @@ export type MakeAuthenticatedReqArgs<Req, Res> = {
    * Returned when the server responds with 404 (in development).
    * Must match `Res` to keep full type safety.
    */
-  fake404: Res | (() => Res)
+  fake404: Res | (() => Res | Promise<Res>)
 }
 
 const defaultParseJson = async <Res>(response: Response): Promise<Res> => {
@@ -97,7 +97,9 @@ export const makeAuthenticatedReq = async <Req, Res>(
         '[DEV] API returned 404; using fake response.',
         JSON.stringify({ method, path, query }),
       )
-      return typeof fake404 === 'function' ? (fake404 as () => Res)() : fake404
+      return typeof fake404 === 'function'
+        ? await (fake404 as () => Res | Promise<Res>)()
+        : fake404
     }
     throw new ApiError(`Request failed with 404: ${method} ${path}`, 404)
   }
