@@ -3,8 +3,9 @@ import { ArrowLeft, Loader2, Pause, Play, RotateCcw } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
 import { Button } from '@renderer/components/ui/button'
-import { filters } from '@renderer/data/mockData'
 import { getFilterDetails } from '@renderer/utils/api/endpoints'
+import type { FilterInfo } from '@renderer/utils/api/types'
+import { buildFilterInfoViewModel } from '@renderer/utils/filterInfoViewModel'
 import {
   SimulationEngine,
   buildSimulationConfig,
@@ -16,7 +17,6 @@ import {
 export function FilterSimulation(): React.JSX.Element {
   const navigate = useNavigate()
   const { id } = useParams()
-  const filter = useMemo(() => filters.find((item) => item.id === id) ?? filters[0], [id])
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const engineRef = useRef<SimulationEngine | null>(null)
@@ -26,6 +26,8 @@ export function FilterSimulation(): React.JSX.Element {
   const [speed, setSpeed] = useState(1)
   const [loading, setLoading] = useState(true)
   const [simConfig, setSimConfig] = useState<SimulationConfig>(DEFAULT_CONFIG)
+  const [filterInfo, setFilterInfo] = useState<FilterInfo | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [stats, setStats] = useState<SimulationStats>({
     totalSpawned: 0,
     totalPassed: 0,
@@ -36,10 +38,16 @@ export function FilterSimulation(): React.JSX.Element {
   useEffect(() => {
     let cancelled = false
     setLoading(true)
+    if (!id) {
+      setLoading(false)
+      setError('Missing filter ID.')
+      return
+    }
 
-    getFilterDetails(id ?? '')
+    getFilterDetails(id)
       .then((resp) => {
         if (cancelled) return
+        setFilterInfo(resp.filterInfo)
         const config = buildSimulationConfig(resp.filterInfo)
         setSimConfig(config)
 
@@ -48,8 +56,10 @@ export function FilterSimulation(): React.JSX.Element {
           engineRef.current.reset()
         }
       })
-      .catch(() => {
-        /* fallback to DEFAULT_CONFIG already set */
+      .catch((fetchError) => {
+        if (!cancelled) {
+          setError(fetchError instanceof Error ? fetchError.message : 'Failed to load simulation data.')
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -59,6 +69,7 @@ export function FilterSimulation(): React.JSX.Element {
       cancelled = true
     }
   }, [id])
+  const vm = useMemo(() => buildFilterInfoViewModel(filterInfo), [filterInfo])
 
   const getEngine = useCallback(
     (): SimulationEngine => {
@@ -161,17 +172,22 @@ export function FilterSimulation(): React.JSX.Element {
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <button
-            onClick={() => navigate(`/filters/${filter.id}`)}
+            onClick={() => navigate(`/filters/${id}`)}
             className="rounded-[6px] p-1.5 transition-colors hover:bg-secondary"
           >
             <ArrowLeft size={16} strokeWidth={1.5} />
           </button>
           <div>
-            <h1 className="text-xl font-semibold">{filter.name} — Filtration Simulation</h1>
-            <p className="font-mono text-xs text-muted-foreground">Filter {filter.id}</p>
+            <h1 className="text-xl font-semibold">Filtration Simulation</h1>
+            <p className="font-mono text-xs text-muted-foreground">Filter {id ?? '-'}</p>
           </div>
         </div>
       </div>
+      {error ? (
+        <div className="mb-4 rounded-[6px] border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden xl:grid-cols-[minmax(0,1fr)_280px]">
         <section className="flex min-h-0 flex-col gap-3 overflow-hidden">
@@ -222,44 +238,44 @@ export function FilterSimulation(): React.JSX.Element {
         <aside className="min-h-0 overflow-y-auto rounded-[8px] border border-border bg-card p-4">
           <h2 className="mb-3 text-sm font-semibold">Filter Properties</h2>
           <div className="mb-4 space-y-1.5 text-sm">
-            {simConfig.materialType && (
+            {vm.metrics.materialType !== 'n/a' && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Material</span>
-                <span className="font-mono text-xs">{simConfig.materialType}</span>
+                <span className="font-mono text-xs">{vm.metrics.materialType}</span>
               </div>
             )}
-            {simConfig.poreSize != null && (
+            {vm.metrics.poreSize != null && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Pore Size</span>
-                <span className="font-mono text-xs">{simConfig.poreSize} nm</span>
+                <span className="font-mono text-xs">{vm.metrics.poreSize.toFixed(3)} nm</span>
               </div>
             )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">Target Efficiency</span>
               <span className="font-mono text-xs">{simConfig.removalEfficiency}%</span>
             </div>
-            {simConfig.pollutant && (
+            {vm.metrics.pollutant !== 'n/a' && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Target Pollutant</span>
-                <span className="font-mono text-xs">{simConfig.pollutant}</span>
+                <span className="font-mono text-xs">{vm.metrics.pollutant}</span>
               </div>
             )}
-            {simConfig.bindingEnergy != null && (
+            {vm.metrics.bindingEnergy != null && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Binding Energy</span>
-                <span className="font-mono text-xs">{simConfig.bindingEnergy} eV</span>
+                <span className="font-mono text-xs">{vm.metrics.bindingEnergy.toFixed(4)} eV</span>
               </div>
             )}
-            {simConfig.temperature != null && (
+            {vm.metrics.temperature != null && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Temperature</span>
-                <span className="font-mono text-xs">{simConfig.temperature} °C</span>
+                <span className="font-mono text-xs">{vm.metrics.temperature.toFixed(2)} °C</span>
               </div>
             )}
-            {simConfig.ph != null && (
+            {vm.metrics.ph != null && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">pH</span>
-                <span className="font-mono text-xs">{simConfig.ph}</span>
+                <span className="font-mono text-xs">{vm.metrics.ph.toFixed(2)}</span>
               </div>
             )}
           </div>

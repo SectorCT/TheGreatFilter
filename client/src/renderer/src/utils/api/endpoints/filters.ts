@@ -51,7 +51,16 @@ const buildFakeFilterInfo = (): FilterInfo => {
       poreSize: 0.45,
       layerThickness: 2.1,
       latticeSpacing: 0.34,
-      materialType: 'Activated Carbon'
+      materialType: 'Activated Carbon',
+      atomPositions: [
+        { x: 0, y: 0, z: 0, element: 'C' },
+        { x: 1.42, y: 0, z: 0, element: 'C' },
+        { x: 2.13, y: 1.23, z: 0, element: 'C' },
+        { x: 1.42, y: 2.46, z: 0, element: 'C' },
+        { x: 0, y: 2.46, z: 0, element: 'C' },
+        { x: -0.71, y: 1.23, z: 0, element: 'C' },
+        { x: 0.71, y: 1.23, z: 3.1, element: 'N' }
+      ]
     },
     experimentPayload: {
       temperature: 18.5,
@@ -72,7 +81,7 @@ const buildFakeFilterInfo = (): FilterInfo => {
       pollutantSymbol: 'NO3'
     },
     summaryMetrics: {
-      parameter_count: 12,
+      parameter_count: 6,
       removalEfficiency: 92,
       bindingEnergy: -18.4,
       materialType: 'Activated Carbon'

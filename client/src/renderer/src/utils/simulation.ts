@@ -63,6 +63,7 @@ const KNOWN_MOLECULES: Record<string, { name: string; color: string; radius: num
 }
 
 const FALLBACK_COLORS = ['#f472b6', '#fb923c', '#facc15', '#4ade80', '#818cf8', '#e879f9']
+const NON_MOLECULAR_CODES = new Set(['PH', 'TEMP'])
 
 const WATER_TYPE: MoleculeType = {
   code: 'H2O',
@@ -100,6 +101,7 @@ export function buildSimulationConfig(info: FilterInfo): SimulationConfig {
 
   for (const p of params) {
     const code = p.name.toUpperCase()
+    if (NON_MOLECULAR_CODES.has(code)) continue
     const known = KNOWN_MOLECULES[code]
     const color = known?.color ?? FALLBACK_COLORS[fallbackIdx++ % FALLBACK_COLORS.length]
     const radius = known?.radius ?? 5

@@ -1,11 +1,26 @@
 import { ArrowLeft, Download, Eye, Microscope, Play } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
+  Radar,
+  RadarChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
+} from 'recharts'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
 import { StatusBadge } from '@renderer/components/StatusBadge'
 import { Button } from '@renderer/components/ui/button'
 import { exportFilterCsv, getFilterDetails, getFilterStatus } from '@renderer/utils/api/endpoints'
 import { type FilterDetailsSuccessResponse, type FilterStatus } from '@renderer/utils/api/types'
+import { buildFilterInfoViewModel } from '@renderer/utils/filterInfoViewModel'
 
 export function FilterDetails(): React.JSX.Element {
   const navigate = useNavigate()
@@ -63,8 +78,24 @@ export function FilterDetails(): React.JSX.Element {
     () => (details?.createdAt ? new Date(details.createdAt).toISOString().slice(0, 10) : '-'),
     [details?.createdAt]
   )
-  const filterInfo = details?.filterInfo ?? {}
-  const summaryEntries = Object.entries(filterInfo)
+  const view = useMemo(() => buildFilterInfoViewModel(details?.filterInfo), [details?.filterInfo])
+  const metricCards = useMemo(
+    () => [
+      { label: 'Material', value: view.metrics.materialType },
+      { label: 'Pore Size', value: view.metrics.poreSize != null ? `${view.metrics.poreSize.toFixed(3)} nm` : '-' },
+      {
+        label: 'Binding Energy',
+        value: view.metrics.bindingEnergy != null ? `${view.metrics.bindingEnergy.toFixed(4)} eV` : '-'
+      },
+      {
+        label: 'Removal Efficiency',
+        value: view.metrics.removalEfficiency != null ? `${view.metrics.removalEfficiency.toFixed(2)}%` : '-'
+      },
+      { label: 'Pollutant', value: view.metrics.pollutant },
+      { label: 'Parameter Count', value: String(view.metrics.parameterCount) }
+    ],
+    [view]
+  )
 
   const handleExportCsv = async (): Promise<void> => {
     if (!id || status !== 'Success') return
@@ -169,38 +200,70 @@ export function FilterDetails(): React.JSX.Element {
       ) : null}
 
       {!isLoading && status === 'Success' ? (
-        <div className="rounded-[6px] border border-border bg-card">
-          <div className="border-b border-border px-4 py-3">
-            <h2 className="text-sm font-semibold">Filter Payload</h2>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {metricCards.map((card) => (
+              <div key={card.label} className="rounded-[6px] border border-border bg-card p-4">
+                <p className="scientific-label mb-2">{card.label}</p>
+                <p className="font-mono text-sm">{card.value}</p>
+              </div>
+            ))}
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-[620px] w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-table-header text-left">
-                  <th className="px-4 py-2.5 font-medium text-muted-foreground">Section</th>
-                  <th className="px-4 py-2.5 font-medium text-muted-foreground">Data</th>
-                </tr>
-              </thead>
-              <tbody>
-                {summaryEntries.map(([key, value]) => (
-                  <tr key={key} className="border-b border-border last:border-0">
-                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{key}</td>
-                    <td className="px-4 py-3">
-                      <pre className="overflow-x-auto font-mono text-xs">
-                        {JSON.stringify(value, null, 2)}
-                      </pre>
-                    </td>
-                  </tr>
-                ))}
-                {summaryEntries.length === 0 ? (
-                  <tr>
-                    <td colSpan={2} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                      No filter detail payload returned by server.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
+
+          <div className="grid grid-cols-1 gap-6 2xl:grid-cols-2">
+            <div className="rounded-[6px] border border-border bg-card p-4">
+              <h2 className="mb-2 text-sm font-semibold">Parameter Composition</h2>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={view.parameterBarData} margin={{ top: 6, right: 12, left: 0, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="code" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
+                    <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
+                    <Tooltip
+                      formatter={(value, _name, item) => [
+                        `${String(value ?? '-')} ${((item?.payload as { unit?: string } | undefined)?.unit ?? '')}`.trim(),
+                        'Value'
+                      ]}
+                      contentStyle={{
+                        borderRadius: 8,
+                        borderColor: 'hsl(var(--border))',
+                        background: 'hsl(var(--card))'
+                      }}
+                    />
+                    <Bar dataKey="value" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="rounded-[6px] border border-border bg-card p-4">
+              <h2 className="mb-2 text-sm font-semibold">Quality Fingerprint</h2>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadarChart data={view.parameterRadarData}>
+                    <PolarGrid stroke="hsl(var(--border))" />
+                    <PolarAngleAxis
+                      dataKey="parameter"
+                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                    />
+                    <PolarRadiusAxis
+                      domain={[0, 100]}
+                      tickCount={6}
+                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                    />
+                    <Radar dataKey="value" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.28} />
+                    <Tooltip
+                      formatter={(value) => [`${String(value ?? '-')}%`, 'Normalized']}
+                      contentStyle={{
+                        borderRadius: 8,
+                        borderColor: 'hsl(var(--border))',
+                        background: 'hsl(var(--card))'
+                      }}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}

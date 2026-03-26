@@ -59,6 +59,7 @@ const KNOWN_MOLECULES: Record<string, { name: string; formula: string; color: st
 }
 
 const FALLBACK_COLORS = ['#f472b6', '#fb923c', '#facc15', '#4ade80', '#818cf8', '#e879f9']
+const NON_MOLECULAR_CODES = new Set(['PH', 'TEMP'])
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
@@ -158,6 +159,7 @@ export function buildMoleculeDefinitions(info: FilterInfo): MoleculeDefinition[]
   let fallbackIdx = 0
   for (const p of params) {
     const code = p.name.toUpperCase()
+    if (NON_MOLECULAR_CODES.has(code)) continue
     const known = KNOWN_MOLECULES[code]
     const normalized = maxParam > 0 ? clamp(p.value / maxParam, 0, 1) : 0
     defs.push({
