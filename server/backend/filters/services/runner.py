@@ -13,14 +13,14 @@ def _core_url() -> str:
     return getattr(settings, "CORE_SERVICE_URL", "http://core:8000").rstrip("/")
 
 
-def _build_params(measurement) -> list[dict]:
-    """Convert WaterMeasurement.parameters_data → core MeasurementParam list."""
+def _build_params_from_selection(measurement_payload) -> list[dict]:
+    """Convert selected frontend measurement params → core MeasurementParam list."""
     params = []
-    for code, data in (measurement.parameters_data or {}).items():
+    for data in (measurement_payload.get("parameters") or []):
         try:
             params.append(
                 {
-                    "name": data.get("parameterCode") or code,
+                    "name": data.get("parameterCode") or data.get("parameterName"),
                     "value": float(data["value"]),
                     "unit": data.get("unit"),
                 }
@@ -28,6 +28,15 @@ def _build_params(measurement) -> list[dict]:
         except (KeyError, TypeError, ValueError):
             continue
     return params
+
+
+def _build_fallback_measurement_payload(generated_filter) -> dict:
+    measurement = generated_filter.measurement
+    return {
+        "temperature": measurement.temperature,
+        "ph": measurement.ph,
+        "parameters": list((measurement.parameters_data or {}).values()),
+    }
 
 
 def run_filter_generation(generated_filter) -> dict:
@@ -40,13 +49,16 @@ def run_filter_generation(generated_filter) -> dict:
     """
     measurement = generated_filter.measurement
     base = _core_url()
+    experiment_payload = generated_filter.experiment_payload or {}
+    measurement_payload = experiment_payload.get("measurement") or _build_fallback_measurement_payload(generated_filter)
+    params = _build_params_from_selection(measurement_payload)
 
     # ── 1. Submit generation request ──────────────────────────────────────
     payload = {
         "measurementId": str(generated_filter.measurement_id),
-        "temperature": measurement.temperature if measurement.temperature is not None else 25.0,
-        "ph": measurement.ph if measurement.ph is not None else 7.0,
-        "params": _build_params(measurement),
+        "temperature": measurement_payload.get("temperature") if measurement_payload.get("temperature") is not None else 25.0,
+        "ph": measurement_payload.get("ph") if measurement_payload.get("ph") is not None else 7.0,
+        "params": params,
     }
 
     try:
@@ -117,12 +129,13 @@ def run_filter_generation(generated_filter) -> dict:
             "connections": info.get("connections", []),
         },
         "experiment_payload": {
+            "core_filter_id": core_filter_id,
+            **experiment_payload,
             "measurement_id": str(generated_filter.measurement_id),
             "study_id": str(generated_filter.study_id),
-            "core_filter_id": core_filter_id,
-            "temperature": measurement.temperature,
-            "ph": measurement.ph,
-            "params": _build_params(measurement),
+            "temperature": measurement_payload.get("temperature"),
+            "ph": measurement_payload.get("ph"),
+            "params": params,
         },
         "result_payload": {
             "bindingEnergy": info.get("bindingEnergy"),
@@ -132,7 +145,7 @@ def run_filter_generation(generated_filter) -> dict:
             "core_filter_id": core_filter_id,
         },
         "summary_metrics": {
-            "parameter_count": measurement.parameter_count,
+            "parameter_count": len(params),
             "removalEfficiency": info.get("removalEfficiency"),
             "bindingEnergy": info.get("bindingEnergy"),
             "materialType": info.get("materialType"),
