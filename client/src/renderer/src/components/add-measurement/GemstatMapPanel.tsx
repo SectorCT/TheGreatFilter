@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, MapPin } from 'lucide-react'
+import { ChevronLeft } from 'lucide-react'
 import OpenStreetMapPointsCard from '@renderer/components/OpenStreetMapPointsCard'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -284,20 +284,15 @@ export function GemstatMapPanel(): React.JSX.Element {
   }
 
   return (
-    <div className="space-y-4 rounded-[6px] border border-border bg-card p-5">
+    <div className="flex h-full min-h-0 flex-col gap-4 rounded-[6px] border border-border bg-card p-5">
       <div>
         <h2 className="text-sm font-semibold">GemStat Map</h2>
         <p className="text-sm text-muted-foreground">
           Select a station and list all sample timestamps.
         </p>
-        {!isLoading && locations ? (
-          <p className="mt-1 text-xs text-muted-foreground">
-            Loaded points: <span className="font-mono">{locations.length}</span>
-          </p>
-        ) : null}
       </div>
       {step === 'map' ? (
-        <>
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
           {isLoading ? (
             <div className="space-y-1.5">
               <p className="text-xs text-muted-foreground">Loading map data...</p>
@@ -317,8 +312,8 @@ export function GemstatMapPanel(): React.JSX.Element {
               `}</style>
             </div>
           ) : null}
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-            <div className="relative h-[560px] overflow-hidden rounded-[6px] border border-border bg-muted">
+          <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+            <div className="relative min-h-0 h-full overflow-hidden rounded-[6px] border border-border bg-muted">
               {!isLoading && locations && locations.length > 0 ? (
                 <OpenStreetMapPointsCard
                   points={locations}
@@ -371,7 +366,7 @@ export function GemstatMapPanel(): React.JSX.Element {
               </Button>
             </div>
           </div>
-        </>
+        </div>
       ) : null}
 
       {step === 'timestamps' ? (
@@ -455,12 +450,6 @@ export function GemstatMapPanel(): React.JSX.Element {
       ) : null}
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {actionMessage ? <p className="text-sm text-emerald-600">{actionMessage}</p> : null}
-      <div className="rounded-[6px] border border-dashed border-border bg-muted/20 p-3 text-xs text-muted-foreground">
-        <p className="flex items-center gap-1">
-          <MapPin className="h-3.5 w-3.5" />
-          Timestamp list includes probe details and row-level add action.
-        </p>
-      </div>
     </div>
   )
 }

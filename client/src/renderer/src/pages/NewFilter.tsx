@@ -434,8 +434,15 @@ export function NewFilter(): React.JSX.Element {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setSelectedImpurities(IMPURITY_OPTIONS)}
-                  disabled={selectedImpurities.length === IMPURITY_OPTIONS.length}
+                  onClick={() =>
+                    setSelectedTargetCodes(
+                      measurementParameters.map((parameter) => parameter.parameterCode)
+                    )
+                  }
+                  disabled={
+                    measurementParameters.length === 0 ||
+                    selectedTargetCodes.length === measurementParameters.length
+                  }
                   title="Select every impurity option"
                 >
                   All

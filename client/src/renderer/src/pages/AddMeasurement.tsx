@@ -30,8 +30,8 @@ export function AddMeasurement(): React.JSX.Element {
   const [selectedMethod, setSelectedMethod] = useState<Method | null>(null)
 
   return (
-    <div className="p-4 md:p-6 lg:p-8">
-      <div className="mb-6 flex items-center gap-3">
+    <div className="flex h-full min-h-0 flex-col p-4 md:p-6 lg:p-8">
+      <div className="mb-6 flex shrink-0 items-center gap-3">
         <button
           onClick={() => (selectedMethod ? setSelectedMethod(null) : navigate('/dashboard'))}
           className="rounded-[6px] p-1.5 transition-colors hover:bg-secondary"
@@ -44,8 +44,9 @@ export function AddMeasurement(): React.JSX.Element {
         </div>
       </div>
 
-      {!selectedMethod ? (
-        <div className="mx-auto w-full max-w-[900px]">
+      <div className="min-h-0 flex-1">
+        {!selectedMethod ? (
+          <div className="mx-auto w-full max-w-[900px]">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {methods.map((method) => {
               const Icon = method.icon
@@ -69,23 +70,20 @@ export function AddMeasurement(): React.JSX.Element {
               )
             })}
           </div>
-        </div>
-      ) : null}
+          </div>
+        ) : null}
 
-      {selectedMethod === 'manual' ? (
-        <ManualEntryPanel />
-      ) : null}
+        {selectedMethod === 'manual' ? <ManualEntryPanel /> : null}
 
-      {selectedMethod === 'usb' ? (
-        <UsbEntryPanel onBack={() => setSelectedMethod(null)} />
-      ) : null}
+        {selectedMethod === 'usb' ? <UsbEntryPanel onBack={() => setSelectedMethod(null)} /> : null}
 
-      {selectedMethod === 'map' ? (
-        <GemstatMapPanel />
-      ) : null}
-      {selectedMethod === 'csv' ? (
-        <CsvImportPanel />
-      ) : null}
+        {selectedMethod === 'map' ? (
+          <div className="h-full min-h-0">
+            <GemstatMapPanel />
+          </div>
+        ) : null}
+        {selectedMethod === 'csv' ? <CsvImportPanel /> : null}
+      </div>
     </div>
   )
 }
