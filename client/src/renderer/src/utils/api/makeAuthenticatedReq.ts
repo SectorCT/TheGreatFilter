@@ -1,3 +1,4 @@
+import { toast } from 'sonner'
 import { apiUrl } from './config'
 import { refreshAccessToken } from './refreshAccessToken'
 import { clearAccessToken } from './authTokenStore'
@@ -18,6 +19,27 @@ type JsonValue = Record<string, unknown> | unknown[] | string | number | boolean
 
 type QueryValue = string | number | boolean | undefined | null
 
+export function formatApiErrorToastMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    const raw = error.responseBodyText?.trim()
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as { message?: unknown; detail?: unknown; errors?: unknown }
+        const msg = typeof parsed.message === 'string' ? parsed.message.trim() : ''
+        const detail = typeof parsed.detail === 'string' ? parsed.detail.trim() : ''
+        if (msg) return msg
+        if (detail) return detail
+      } catch {
+        if (raw.length > 0 && raw.length < 400) return raw
+      }
+    }
+    if (error.status === 404) return 'Resource not found.'
+    return error.message.trim() || 'Request failed'
+  }
+  if (error instanceof Error && error.message.trim()) return error.message.trim()
+  return 'Something went wrong'
+}
+
 export type MakeAuthenticatedReqArgs<Req, Res> = {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE'
   path: string // e.g. '/auth/login'
@@ -30,21 +52,16 @@ export type MakeAuthenticatedReqArgs<Req, Res> = {
    */
   parseResponse?: (response: Response) => Promise<Res>
   /**
-   * Returned when the server responds with 404 (in development).
-   * Must match `Res` to keep full type safety.
+   * When true, failed requests still throw but do not open a toast
+   * (e.g. login/signup forms show inline errors).
    */
-  fake404: Res | (() => Res | Promise<Res>)
+  suppressErrorToast?: boolean
 }
 
 const defaultParseJson = async <Res>(response: Response): Promise<Res> => {
   // Some backends return empty bodies for 204/etc. Those endpoints aren't in the contract yet.
   const data = (await response.json()) as Res | JsonValue
   return data as Res
-}
-
-const isDevMode = (): boolean => {
-  // Vite provides `import.meta.env.DEV` as a boolean.
-  return Boolean((import.meta as { env?: { DEV?: boolean } }).env?.DEV)
 }
 
 const buildQuery = (query: Record<string, QueryValue> | undefined): string => {
@@ -84,7 +101,7 @@ export const makeAuthenticatedReq = async <Req, Res>(
     body,
     authRequired = true,
     parseResponse = defaultParseJson<Res>,
-    fake404
+    suppressErrorToast = false
   } = args
 
   const url = `${apiUrl(path)}${buildQuery(query)}`
@@ -100,26 +117,42 @@ export const makeAuthenticatedReq = async <Req, Res>(
   }
 
   if (authRequired) {
-    const token = await refreshAccessToken()
-    headers.Authorization = `Bearer ${token}`
+    try {
+      const token = await refreshAccessToken()
+      headers.Authorization = `Bearer ${token}`
+    } catch (tokenError) {
+      if (!suppressErrorToast) {
+        toast.error(formatApiErrorToastMessage(tokenError))
+      }
+      throw tokenError
+    }
   }
 
-  const response = await fetch(url, {
-    method,
-    headers,
-    body:
-      body !== undefined ? (isFormDataBody ? (body as BodyInit) : JSON.stringify(body)) : undefined
-  })
-
-  if (response.status === 404) {
-    if (isDevMode()) {
-      console.warn(
-        '[DEV] API returned 404; using fake response.',
-        JSON.stringify({ method, path, query })
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method,
+      headers,
+      body:
+        body !== undefined ? (isFormDataBody ? (body as BodyInit) : JSON.stringify(body)) : undefined
+    })
+  } catch (networkError) {
+    if (!suppressErrorToast) {
+      toast.error(
+        networkError instanceof Error && networkError.message
+          ? networkError.message
+          : 'Network request failed'
       )
-      return typeof fake404 === 'function' ? await (fake404 as () => Res | Promise<Res>)() : fake404
     }
-    throw new ApiError(`Request failed with 404: ${method} ${path}`, 404)
+    throw networkError
+  }
+
+  const fail = async (bodyText: string | undefined): Promise<never> => {
+    const err = new ApiError(`Request failed: ${method} ${path}`, response.status, bodyText)
+    if (!suppressErrorToast) {
+      toast.error(formatApiErrorToastMessage(err))
+    }
+    throw err
   }
 
   if (!response.ok) {
@@ -127,8 +160,15 @@ export const makeAuthenticatedReq = async <Req, Res>(
     if (authRequired && shouldForceLogoutFromUnauthorized(response.status, bodyText)) {
       forceLogoutAndRedirectToLogin()
     }
-    throw new ApiError(`Request failed: ${method} ${path}`, response.status, bodyText)
+    await fail(bodyText)
   }
 
-  return parseResponse(response)
+  try {
+    return await parseResponse(response)
+  } catch (parseError) {
+    if (!suppressErrorToast) {
+      toast.error(formatApiErrorToastMessage(parseError))
+    }
+    throw parseError
+  }
 }

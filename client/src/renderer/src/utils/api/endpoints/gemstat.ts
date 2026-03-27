@@ -331,9 +331,6 @@ export const getGemstatLocations = async (): Promise<GemstatLocationFetchRespons
         locations,
       }
     },
-    fake404: () => {
-      return { locations: [] }
-    },
   })
 
   try {
@@ -377,39 +374,6 @@ export const getGemstatStationMeasurements = async (
         measurements: normalized.measurements
       }
     },
-    fake404: () => ({
-      measurementId: `fake-measurement-${locationId}`,
-      locationId,
-      stationName: 'Development station',
-      source: 'gemstat',
-      rows: [],
-      measurements: [
-        makeFakeStationRow({
-          sampleDate: '2025-01-15',
-          sampleTime: '09:15',
-          parameterCode: 'TEMP',
-          value: 12.3,
-          unit: 'C',
-          depth: null
-        }),
-        makeFakeStationRow({
-          sampleDate: '2025-01-15',
-          sampleTime: '09:15',
-          parameterCode: 'PH',
-          value: 7.4,
-          unit: '',
-          depth: null
-        }),
-        makeFakeStationRow({
-          sampleDate: '2025-02-01',
-          sampleTime: '10:00',
-          parameterCode: 'DO',
-          value: 8.1,
-          unit: 'mg/L',
-          depth: 1.5
-        })
-      ]
-    })
   })
 }
 
@@ -451,42 +415,8 @@ export const getGemstatSnapshot = async (
       }
       return { measurement }
     },
-    fake404: (): GemstatSnapshotFetchResponse => {
-      const measurement: Measurement = {
-        measurementId: `fake-measurement-${locationId}-${date}`,
-        source: 'gemstat',
-        createdAt: new Date().toISOString(),
-        temperature: 12.3,
-        ph: 7.4,
-        parameters: [
-          { parameterCode: 'TEMP', value: 12.3, unit: 'C' },
-          { parameterCode: 'PH', value: 7.4 }
-        ]
-      }
-
-      return { measurement }
-    }
   })
 }
-
-const makeFakeStationRow = (row: {
-  sampleDate: string
-  sampleTime: string
-  parameterCode: string
-  value: number
-  unit: string
-  depth: number | null
-}): GemstatStationMeasurementRow => ({
-  sampleDate: row.sampleDate,
-  sampleTime: row.sampleTime,
-  depth: row.depth,
-  parameterCode: row.parameterCode,
-  analysisMethodCode: null,
-  valueFlags: null,
-  value: row.value,
-  unit: row.unit,
-  dataQuality: null
-})
 
 const toStationRows = (row: GemstatLocationRow): GemstatStationMeasurementRow[] => {
   const sourceParams = row.parameters ?? []

@@ -9,10 +9,6 @@ import { getAccessToken } from './authTokenStore'
 export const refreshAccessToken = async (): Promise<string> => {
   const token = getAccessToken()
   if (!token) {
-    // Dev infrastructure: allow API helpers to work before the real auth flow
-    // is fully integrated in the UI.
-    if (import.meta.env?.DEV) return 'fake-dev-access-token'
-
     throw new Error('Missing access token. Authenticate first.')
   }
   return token

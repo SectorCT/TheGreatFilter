@@ -42,9 +42,5 @@ export const exportFilterCsv = async (
     query: { format: 'csv' },
     authRequired: true,
     parseResponse: parseExportResponse,
-    fake404: () => ({
-      kind: 'csvText',
-      csvText: `filter_id,${filterId}\nstatus,fake\n`
-    })
   })
 }
