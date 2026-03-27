@@ -1,4 +1,4 @@
-import { ArrowRight, FlaskConical } from 'lucide-react'
+import { ArrowRight, Cpu, FlaskConical } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
@@ -211,7 +211,14 @@ export function Filters(): React.JSX.Element {
                   }`}
                 >
                   <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{item.filterId}</td>
-                  <td className="px-4 py-3 font-medium">Filter {item.filterId.slice(0, 8)}</td>
+                  <td className="px-4 py-3 font-medium">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span>Filter {item.filterId.slice(0, 8)}</span>
+                      {item.useQuantumComputer === true ? (
+                        <Cpu size={14} strokeWidth={1.7} className="text-violet-600" aria-label="Quantum computer" />
+                      ) : null}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 font-mono text-xs">
                     {studyNameById.get(item.studyId) ?? item.studyId.slice(0, 8)}
                   </td>

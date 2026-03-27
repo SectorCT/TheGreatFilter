@@ -1,4 +1,4 @@
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Info } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useNavigate } from 'react-router-dom'
@@ -53,6 +53,7 @@ export function NewFilter(): React.JSX.Element {
   const [isLoadingStudies, setIsLoadingStudies] = useState(true)
   const [isCreatingStudyInline, setIsCreatingStudyInline] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [useQuantumComputer, setUseQuantumComputer] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [inlineStudyName, setInlineStudyName] = useState('')
   const [inlineStudyDescription, setInlineStudyDescription] = useState('')
@@ -243,6 +244,7 @@ export function NewFilter(): React.JSX.Element {
       studyId: selectedStudyId,
       studyName: selectedStudy?.name ?? null,
       measurementId: selectedMeasurementId,
+      useQuantumComputer,
       measurement: buildMeasurementPayload(selectedMeasurementDetail),
       targetParameterCodes: selectedTargetParameterCodes,
       coreInputs: {}
@@ -472,6 +474,38 @@ export function NewFilter(): React.JSX.Element {
                     {item.label} ({item.code}) x
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="scientific-label mb-1 block">Execution Mode</label>
+              <div className="flex items-center justify-between gap-3 rounded-[6px] border border-input bg-surface-elevated px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">
+                    Use quantum computer
+                  </p>
+                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Info size={13} />
+                    If off, a quantum simulation is used. If on, a real quantum computer is used.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={useQuantumComputer}
+                  onClick={() => setUseQuantumComputer((prev) => !prev)}
+                  className={`inline-flex h-6 w-11 items-center rounded-full border transition-colors ${
+                    useQuantumComputer
+                      ? 'border-emerald-500 bg-emerald-500/80'
+                      : 'border-border bg-muted'
+                  }`}
+                >
+                  <span
+                    className={`h-5 w-5 rounded-full bg-white transition-transform ${
+                      useQuantumComputer ? 'translate-x-5' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
               </div>
             </div>
 

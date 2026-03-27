@@ -239,6 +239,7 @@ export type FilterListItem = {
   filterId: string
   studyId: string
   measurementId: string
+  useQuantumComputer?: boolean | null
   status: FilterStatus
   createdAt: string // ISO-8601
 }
@@ -253,6 +254,7 @@ export type FilterListResponse =
 export type GenerateFilterRequest = {
   studyId: string
   measurementId: string
+  useQuantumComputer: boolean
   measurement: {
     dateKey?: string
     sampleTime?: string | null

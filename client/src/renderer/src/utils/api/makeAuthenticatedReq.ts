@@ -1,5 +1,6 @@
 import { apiUrl } from './config'
 import { refreshAccessToken } from './refreshAccessToken'
+import { clearAccessToken } from './authTokenStore'
 
 export class ApiError extends Error {
   public readonly status: number
@@ -57,6 +58,22 @@ const buildQuery = (query: Record<string, QueryValue> | undefined): string => {
   return serialized ? `?${serialized}` : ''
 }
 
+const shouldForceLogoutFromUnauthorized = (status: number, bodyText?: string): boolean => {
+  if (status !== 401 || !bodyText) return false
+  return (
+    bodyText.includes('Given token not valid for any token type') ||
+    bodyText.includes('token_not_valid') ||
+    bodyText.includes('Token is invalid or expired')
+  )
+}
+
+const forceLogoutAndRedirectToLogin = (): void => {
+  clearAccessToken()
+  if (typeof window === 'undefined') return
+  if (window.location.pathname === '/') return
+  window.location.assign('/')
+}
+
 export const makeAuthenticatedReq = async <Req, Res>(
   args: MakeAuthenticatedReqArgs<Req, Res>
 ): Promise<Res> => {
@@ -107,6 +124,9 @@ export const makeAuthenticatedReq = async <Req, Res>(
 
   if (!response.ok) {
     const bodyText = await response.text().catch(() => undefined)
+    if (authRequired && shouldForceLogoutFromUnauthorized(response.status, bodyText)) {
+      forceLogoutAndRedirectToLogin()
+    }
     throw new ApiError(`Request failed: ${method} ${path}`, response.status, bodyText)
   }
 
