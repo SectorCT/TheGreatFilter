@@ -1,4 +1,10 @@
 import type { FilterInfo } from '@renderer/utils/api/types'
+import { PARAM_CODE_NAME_MAP } from '@renderer/utils/filterLayerMatching'
+import {
+  getAggregateRemovalEfficiencyPercent,
+  getFilterLayers,
+  getSummaryMetrics
+} from '@renderer/utils/normalizeFilterStructure'
 
 type Vec2 = { x: number; y: number }
 
@@ -60,20 +66,7 @@ const KNOWN_MOLECULES: Record<string, { name: string; formula: string; color: st
 
 const FALLBACK_COLORS = ['#f472b6', '#fb923c', '#facc15', '#4ade80', '#818cf8', '#e879f9']
 const NON_MOLECULAR_CODES = new Set(['PH', 'TEMP'])
-const CODE_NAME_MAP: Record<string, string> = {
-  'CA-DIS': 'Calcium',
-  'CL-DIS': 'Chloride',
-  'MG-DIS': 'Magnesium',
-  'NA-DIS': 'Sodium',
-  'K-DIS': 'Potassium',
-  'ZN-DIS': 'Zinc',
-  'PB-DIS': 'Lead',
-  'CU-DIS': 'Copper',
-  'NI-DIS': 'Nickel',
-  'MN-DIS': 'Manganese',
-  'FE-DIS': 'Iron',
-  TOLH: 'Toluene'
-}
+const CODE_NAME_MAP = PARAM_CODE_NAME_MAP
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
@@ -154,7 +147,15 @@ function drawMetal(ctx: CanvasRenderingContext2D, node: MoleculeNode): void {
 
 export function buildMoleculeDefinitions(info: FilterInfo): MoleculeDefinition[] {
   const params = info.experimentPayload?.params ?? []
-  const removalEfficiency = clamp(info.resultPayload?.removalEfficiency ?? 90, 0, 100) / 100
+  const layers = getFilterLayers(info)
+  const defaultRemovalPct = clamp(
+    getAggregateRemovalEfficiencyPercent(info) ??
+      info.resultPayload?.removalEfficiency ??
+      getSummaryMetrics(info)?.removalEfficiency ??
+      (layers[0]?.removalEfficiency ?? 90),
+    0,
+    100
+  )
   const maxParam = params.reduce((acc, p) => Math.max(acc, Math.max(0, p.value)), 0)
 
   const defs: MoleculeDefinition[] = [
@@ -181,6 +182,7 @@ export function buildMoleculeDefinitions(info: FilterInfo): MoleculeDefinition[]
     const symbolFromCode = code.match(/^([A-Z][A-Z]?)/)?.[1] ?? null
     const inferredFormula = known?.formula ?? (symbolFromCode && symbolFromCode.length <= 2 ? symbolFromCode : 'n/a')
     const normalized = maxParam > 0 ? clamp(p.value / maxParam, 0, 1) : 0
+    const removalRate = clamp(defaultRemovalPct, 0, 100) / 100
     defs.push({
       code,
       name: known?.name ?? humanName,
@@ -190,7 +192,7 @@ export function buildMoleculeDefinitions(info: FilterInfo): MoleculeDefinition[]
       unit: p.unit ?? 'mg/L',
       normalized,
       radiusScale: known?.radiusScale ?? 1,
-      removalRate: removalEfficiency,
+      removalRate,
       filterable: true
     })
   }
@@ -246,8 +248,12 @@ export class MolecularScene {
         ? Math.round(14 + molecule.normalized * 40)
         : 90
 
+      const eff =
+        molecule.filterable && typeof molecule.removalRate === 'number'
+          ? clamp(molecule.removalRate, 0, 1)
+          : this.removalEfficiency
       const filteredCount = molecule.filterable
-        ? Math.max(0, Math.round(baseCount * (1 - this.removalEfficiency)))
+        ? Math.max(0, Math.round(baseCount * (1 - eff)))
         : Math.round(baseCount * 0.98)
 
       const baseRadius = clamp(3.5 + molecule.radiusScale * 2.6 * poreFactor, 3, 9)

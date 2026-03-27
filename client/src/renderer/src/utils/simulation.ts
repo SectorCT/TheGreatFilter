@@ -1,4 +1,11 @@
 import type { FilterInfo } from '@renderer/utils/api/types'
+import {
+  getAggregateBindingEnergyEv,
+  getAggregatePoreSizeNm,
+  getAggregateRemovalEfficiencyPercent,
+  getFilterLayers,
+  getSummaryMetrics
+} from '@renderer/utils/normalizeFilterStructure'
 
 export type MoleculeType = {
   code: string
@@ -94,7 +101,12 @@ export const DEFAULT_CONFIG: SimulationConfig = {
 
 export function buildSimulationConfig(info: FilterInfo): SimulationConfig {
   const params = info.experimentPayload?.params ?? []
-  const efficiency = info.resultPayload?.removalEfficiency ?? 90
+  const layers = getFilterLayers(info)
+  const efficiency =
+    getAggregateRemovalEfficiencyPercent(info) ??
+    info.resultPayload?.removalEfficiency ??
+    getSummaryMetrics(info)?.removalEfficiency ??
+    (layers[0]?.removalEfficiency ?? 90)
 
   const contaminants: MoleculeType[] = []
   let fallbackIdx = 0
@@ -125,16 +137,23 @@ export function buildSimulationConfig(info: FilterInfo): SimulationConfig {
     ? Math.max(0.3, Math.min(0.8, 1 - totalContaminantWeight / (totalContaminantWeight + 50)))
     : 0.55
 
+  const firstLayer = layers[0]
   return {
     moleculeTypes: allTypes,
     waterRatio,
     removalEfficiency: efficiency,
-    poreSize: info.filterStructure?.poreSize,
-    materialType: info.filterStructure?.materialType ?? info.summaryMetrics?.materialType,
+    poreSize:
+      getAggregatePoreSizeNm(info) ?? info.filterStructure?.poreSize ?? firstLayer?.poreSize,
+    materialType:
+      info.filterStructure?.materialType ?? info.summaryMetrics?.materialType ?? firstLayer?.materialType,
     temperature: info.experimentPayload?.temperature,
     ph: info.experimentPayload?.ph,
     pollutant: info.resultPayload?.pollutant,
-    bindingEnergy: info.resultPayload?.bindingEnergy
+    bindingEnergy:
+      getAggregateBindingEnergyEv(info) ??
+      info.resultPayload?.bindingEnergy ??
+      getSummaryMetrics(info)?.bindingEnergy ??
+      firstLayer?.bindingEnergy
   }
 }
 
@@ -203,8 +222,6 @@ export class SimulationEngine {
       this.spawn()
     }
 
-    const captureProb = this.config.removalEfficiency / 100
-
     for (const p of this.particles) {
       if (p.captured) continue
 
@@ -224,6 +241,7 @@ export class SimulationEngine {
 
       if (!p.passed && p.x + p.type.radius >= this.filterLeft && p.x - p.type.radius <= this.filterRight) {
         if (p.type.filterable) {
+          const captureProb = Math.max(0, Math.min(100, this.config.removalEfficiency)) / 100
           if (Math.random() < captureProb) {
             p.captured = true
             p.captureX = this.filterLeft + Math.random() * (this.filterRight - this.filterLeft)

@@ -1,6 +1,6 @@
 import { ArrowLeft, Download, Eye, Microscope, Play } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   Bar,
   BarChart,
@@ -25,7 +25,16 @@ import { Button } from '@renderer/components/ui/button'
 import { isFilterStatusWaiting } from '@renderer/hooks/usePollPendingFilterStatuses'
 import { exportFilterCsv, getFilterDetails, getFilterStatus } from '@renderer/utils/api/endpoints'
 import { type FilterDetailsSuccessResponse, type FilterStatus } from '@renderer/utils/api/types'
+
+/** UI-only: JSON import is not a server job status. */
+type FilterDetailsPageStatus = FilterStatus | 'Imported'
 import { buildFilterInfoViewModel } from '@renderer/utils/filterInfoViewModel'
+import {
+  buildFilterDetailsFromImportedJson,
+  isImportedFilterRouteId,
+  readImportedFilterSession,
+  type ImportedFilterLocationState,
+} from '@renderer/utils/importedFilterPayload'
 
 const toSafeFileStem = (value: string): string => {
   const normalized = value
@@ -38,14 +47,44 @@ const toSafeFileStem = (value: string): string => {
 
 export function FilterDetails(): React.JSX.Element {
   const navigate = useNavigate()
+  const location = useLocation()
   const { id } = useParams()
-  const [status, setStatus] = useState<FilterStatus | null>(null)
+  const isImported = isImportedFilterRouteId(id)
+  const importedSession = useMemo((): ImportedFilterLocationState | null => {
+    if (!isImported) return null
+    return readImportedFilterSession(location)
+  }, [isImported, location.state])
+  const [status, setStatus] = useState<FilterDetailsPageStatus | null>(null)
   const [details, setDetails] = useState<FilterDetailsSuccessResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isExporting, setIsExporting] = useState(false)
 
   useEffect(() => {
+    if (!isImported || !id) return
+    if (!importedSession?.importedFilterJson) {
+      setDetails(null)
+      setStatus(null)
+      setError('No imported filter data. Upload a JSON file from All Filters.')
+      setIsLoading(false)
+      return
+    }
+    try {
+      setDetails(buildFilterDetailsFromImportedJson(importedSession.importedFilterJson, importedSession.importedFileName))
+      setStatus('Imported')
+      setError(null)
+    } catch (parseError) {
+      setDetails(null)
+      setStatus(null)
+      setError(parseError instanceof Error ? parseError.message : 'Invalid filter JSON.')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [isImported, id, importedSession])
+
+  useEffect(() => {
+    if (isImported) return
+
     let isMounted = true
     setStatus(null)
     const loadStatus = async (): Promise<void> => {
@@ -67,9 +106,9 @@ export function FilterDetails(): React.JSX.Element {
     return () => {
       isMounted = false
     }
-  }, [id])
+  }, [id, isImported])
 
-  const statusPollingActive = id != null && isFilterStatusWaiting(status)
+  const statusPollingActive = id != null && !isImported && isFilterStatusWaiting(status)
 
   useEffect(() => {
     if (!id || !statusPollingActive) return
@@ -99,7 +138,7 @@ export function FilterDetails(): React.JSX.Element {
   useEffect(() => {
     let isMounted = true
     const loadDetails = async (): Promise<void> => {
-      if (!id || status !== 'Success') return
+      if (!id || isImported || status !== 'Success') return
       try {
         const response = await getFilterDetails(id)
         if (!isMounted) return
@@ -113,9 +152,10 @@ export function FilterDetails(): React.JSX.Element {
     return () => {
       isMounted = false
     }
-  }, [id, status])
+  }, [id, status, isImported])
 
   const displayStatus = status ?? 'Pending'
+  const dashboardReady = status === 'Success' || status === 'Imported'
   const createdAt = useMemo(
     () => (details?.createdAt ? new Date(details.createdAt).toISOString().slice(0, 10) : '-'),
     [details?.createdAt]
@@ -141,13 +181,18 @@ export function FilterDetails(): React.JSX.Element {
   const compositionData = useMemo(() => {
     if (view.parameterBarData.length > 0) return view.parameterBarData
     const fallback = [
-      { code: 'PH', name: 'pH', value: view.metrics.ph ?? 7, unit: '' },
-      { code: 'TMP', name: 'Temperature', value: view.metrics.temperature ?? 25, unit: 'C' },
-      { code: 'PSE', name: 'Pore Size', value: view.metrics.poreSize ?? 1, unit: 'nm' },
-      { code: 'BND', name: 'Binding Energy', value: view.metrics.bindingEnergy ?? 1, unit: 'eV' },
-      { code: 'EFF', name: 'Removal', value: view.metrics.removalEfficiency ?? 50, unit: '%' }
+      { code: 'PH', name: 'pH', value: view.metrics.ph ?? 7, rawValue: view.metrics.ph ?? 7, unit: '' },
+      { code: 'TMP', name: 'Temperature', value: view.metrics.temperature ?? 25, rawValue: view.metrics.temperature ?? 25, unit: 'C' },
+      { code: 'PSE', name: 'Pore Size', value: view.metrics.poreSize ?? 1, rawValue: view.metrics.poreSize ?? 1, unit: 'nm' },
+      { code: 'BND', name: 'Binding Energy', value: view.metrics.bindingEnergy ?? 1, rawValue: view.metrics.bindingEnergy ?? 1, unit: 'eV' },
+      { code: 'EFF', name: 'Removal', value: view.metrics.removalEfficiency ?? 50, rawValue: view.metrics.removalEfficiency ?? 50, unit: '%' }
     ]
-    return fallback.map((item) => ({ ...item, value: Number(item.value.toFixed(4)) }))
+    const maxF = Math.max(...fallback.map((i) => Math.abs(Number(i.value)) || 0), 1e-9)
+    return fallback.map((item) => ({
+      ...item,
+      value: Number(((Math.abs(Number(item.value)) / maxF) * 100).toFixed(2)),
+      rawValue: Number(Number(item.rawValue).toFixed(4))
+    }))
   }, [view])
   const fingerprintData = useMemo(() => {
     if (view.parameterRadarData.length > 0) return view.parameterRadarData
@@ -164,16 +209,24 @@ export function FilterDetails(): React.JSX.Element {
     ]
   }, [view])
   const donutData = useMemo(() => {
+    if (view.parameterDonutData.length > 0) return view.parameterDonutData
     const sorted = compositionData
-      .filter((item) => item.value > 0)
+      .filter((item) => item.rawValue > 0 || item.value > 0)
+      .map((item) => ({
+        code: item.code,
+        name: item.name,
+        value: Math.max(item.rawValue, 1e-9),
+        rawValue: item.rawValue,
+        unit: item.unit
+      }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 5)
-    return sorted.length > 0 ? sorted : [{ code: 'N/A', name: 'No Data', value: 1, unit: '' }]
-  }, [compositionData])
+    return sorted.length > 0 ? sorted : [{ code: 'N/A', name: 'No Data', value: 1, rawValue: 0, unit: '' }]
+  }, [compositionData, view.parameterDonutData])
   const donutColors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6']
 
   const handleExportCsv = async (): Promise<void> => {
-    if (!id || status !== 'Success') return
+    if (!id || status !== 'Success' || isImported) return
     setIsExporting(true)
     setError(null)
     try {
@@ -199,6 +252,9 @@ export function FilterDetails(): React.JSX.Element {
     }
   }
 
+  const importedReady = !isImported || Boolean(importedSession?.importedFilterJson)
+  const childNavState = isImported ? importedSession ?? undefined : undefined
+
   return (
     <div className="p-4 md:p-6 lg:p-8">
       <Breadcrumbs />
@@ -213,24 +269,50 @@ export function FilterDetails(): React.JSX.Element {
           <div>
             <h1 className="text-xl font-semibold">Filter Details</h1>
             <p className="font-mono text-xs text-muted-foreground">
-              Filter {id ?? '-'} · Generated {createdAt}
+              {isImported && importedSession?.importedFileName ? (
+                <>
+                  Imported <span className="text-foreground">{importedSession.importedFileName}</span> · local
+                  preview (not saved) · {details?.filterId ?? id}
+                </>
+              ) : (
+                <>
+                  Filter {id ?? '-'} · Generated {createdAt}
+                </>
+              )}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => navigate(`/filters/${id}/analysis`)} disabled={!id}>
+          <Button
+            variant="outline"
+            onClick={() => navigate(`/filters/${id}/analysis`, { state: childNavState })}
+            disabled={!id || !importedReady}
+          >
             <Microscope size={16} strokeWidth={1.5} />
             Analyze
           </Button>
-          <Button variant="outline" onClick={() => navigate(`/filters/${id}/visualize`)} disabled={!id}>
+          <Button
+            variant="outline"
+            onClick={() => navigate(`/filters/${id}/visualize`, { state: childNavState })}
+            disabled={!id || !importedReady}
+          >
             <Eye size={16} strokeWidth={1.5} />
             Visualize
           </Button>
-          <Button variant="outline" onClick={() => navigate(`/filters/${id}/simulate`)} disabled={!id}>
+          <Button
+            variant="outline"
+            onClick={() => navigate(`/filters/${id}/simulate`, { state: childNavState })}
+            disabled={!id || !importedReady}
+          >
             <Play size={16} strokeWidth={1.5} />
             Simulate
           </Button>
-          <Button variant="outline" onClick={() => void handleExportCsv()} disabled={status !== 'Success' || isExporting}>
+          <Button
+            variant="outline"
+            onClick={() => void handleExportCsv()}
+            disabled={status !== 'Success' || isExporting || isImported}
+            title={isImported ? 'Export is only available for saved filters.' : undefined}
+          >
             <Download size={16} strokeWidth={1.5} />
             {isExporting ? 'Exporting...' : 'Export CSV'}
           </Button>
@@ -268,14 +350,14 @@ export function FilterDetails(): React.JSX.Element {
         </div>
       ) : null}
 
-      {!isLoading && status !== 'Success' ? (
+      {!isLoading && !dashboardReady ? (
         <div className="rounded-[6px] border border-border bg-card p-6 text-sm text-muted-foreground">
           Filter is currently <StatusBadge status={displayStatus} />. Details and export unlock when status
           becomes Success.
         </div>
       ) : null}
 
-      {!isLoading && status === 'Success' ? (
+      {!isLoading && dashboardReady ? (
         <div className="space-y-6">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {metricCards.map((card) => (
@@ -288,7 +370,7 @@ export function FilterDetails(): React.JSX.Element {
 
           <div className="grid grid-cols-1 gap-6 2xl:grid-cols-2">
             <div className="rounded-[6px] border border-border bg-card p-4">
-              <h2 className="mb-2 text-sm font-semibold">Parameter Composition</h2>
+                  <h2 className="mb-2 text-sm font-semibold">Parameter Composition</h2>
               <div className="h-72 w-full min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={compositionData} margin={{ top: 6, right: 12, left: 0, bottom: 8 }}>
@@ -296,10 +378,12 @@ export function FilterDetails(): React.JSX.Element {
                     <XAxis dataKey="code" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
                     <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
                     <Tooltip
-                      formatter={(value, _name, item) => [
-                        `${String(value ?? '-')} ${((item?.payload as { unit?: string } | undefined)?.unit ?? '')}`.trim(),
-                        'Value'
-                      ]}
+                      formatter={(_value, _name, item) => {
+                        const p = item?.payload as { rawValue?: number; unit?: string } | undefined
+                        const raw = p?.rawValue
+                        const u = p?.unit ?? ''
+                        return [`${raw != null ? String(raw) : '-'} ${u}`.trim(), 'Measured']
+                      }}
                       contentStyle={{
                         borderRadius: 8,
                         borderColor: 'hsl(var(--border))',
@@ -372,13 +456,19 @@ export function FilterDetails(): React.JSX.Element {
                       formatter={(value, _entry, index) => {
                         const data = donutData[index]
                         if (!data) return String(value)
-                        return `${data.code}: ${data.value} ${data.unit}`.trim()
+                        return `${data.code}: ${data.rawValue} ${data.unit}`.trim()
                       }}
                     />
                     <Tooltip
                       formatter={(value, _name, item) => {
-                        const payload = item?.payload as { unit?: string; name?: string } | undefined
-                        return [`${String(value ?? '-')} ${payload?.unit ?? ''}`.trim(), payload?.name ?? 'Signal']
+                        const payload = item?.payload as { unit?: string; rawValue?: number } | undefined
+                        const total = donutData.reduce((s, d) => s + d.value, 0)
+                        const pct = total > 0 && value != null ? ((Number(value) / total) * 100).toFixed(1) : '0'
+                        const raw = payload?.rawValue
+                        return [
+                          `${pct}% (${raw != null ? String(raw) : '-'} ${payload?.unit ?? ''})`.trim(),
+                          'Share'
+                        ]
                       }}
                       contentStyle={{
                         borderRadius: 8,

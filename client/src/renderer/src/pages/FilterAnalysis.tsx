@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Loader2, Microscope } from 'lucide-react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   Bar,
   BarChart,
@@ -21,6 +21,11 @@ import { getFilterDetails } from '@renderer/utils/api/endpoints'
 import type { FilterInfo } from '@renderer/utils/api/types'
 import { buildFilterInfoViewModel } from '@renderer/utils/filterInfoViewModel'
 import {
+  buildFilterDetailsFromImportedJson,
+  isImportedFilterRouteId,
+  readImportedFilterSession,
+} from '@renderer/utils/importedFilterPayload'
+import {
   buildMoleculeDefinitions,
   MolecularScene,
   type MolecularHoverInfo
@@ -39,7 +44,9 @@ function formatValue(value?: number): string {
 
 export function FilterAnalysis(): React.JSX.Element {
   const navigate = useNavigate()
+  const location = useLocation()
   const { id } = useParams()
+  const isImported = isImportedFilterRouteId(id)
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const sceneRef = useRef<MolecularScene | null>(null)
@@ -55,6 +62,31 @@ export function FilterAnalysis(): React.JSX.Element {
 
     if (!id) {
       return
+    }
+
+    if (isImported) {
+      const session = readImportedFilterSession(location)
+      if (!session?.importedFilterJson) {
+        setFilterInfo(null)
+        setError('No imported filter data. Open your JSON from All Filters first.')
+        setLoading(false)
+        return
+      }
+      try {
+        const details = buildFilterDetailsFromImportedJson(session.importedFilterJson, session.importedFileName)
+        if (!cancelled) setFilterInfo(details.filterInfo)
+        setError(null)
+      } catch (parseError) {
+        if (!cancelled) {
+          setFilterInfo(null)
+          setError(parseError instanceof Error ? parseError.message : 'Failed to load imported filter.')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+      return () => {
+        cancelled = true
+      }
     }
 
     getFilterDetails(id)
@@ -74,14 +106,14 @@ export function FilterAnalysis(): React.JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [id])
+  }, [id, isImported, location.state])
 
   const moleculeDefs = useMemo(() => buildMoleculeDefinitions(filterInfo ?? {}), [filterInfo])
   const vm = useMemo(() => buildFilterInfoViewModel(filterInfo), [filterInfo])
   const filterStructure = filterInfo?.filterStructure
   const experimentPayload = filterInfo?.experimentPayload
   const resultPayload = filterInfo?.resultPayload
-  const removalEfficiency = resultPayload?.removalEfficiency ?? 90
+  const removalEfficiency = vm.metrics.removalEfficiency ?? resultPayload?.removalEfficiency ?? 90
 
   const radarData = useMemo(() => {
     return vm.parameterRadarData
@@ -125,17 +157,17 @@ export function FilterAnalysis(): React.JSX.Element {
     if (!sceneRef.current) {
       sceneRef.current = new MolecularScene({
         definitions: moleculeDefs,
-        poreSize: filterStructure?.poreSize,
-        materialType: filterStructure?.materialType,
-        layerThickness: filterStructure?.layerThickness,
+        poreSize: vm.metrics.poreSize ?? filterStructure?.poreSize,
+        materialType: vm.metrics.materialType,
+        layerThickness: vm.metrics.layerThickness ?? filterStructure?.layerThickness,
         removalEfficiency
       })
     } else {
       sceneRef.current.update({
         definitions: moleculeDefs,
-        poreSize: filterStructure?.poreSize,
-        materialType: filterStructure?.materialType,
-        layerThickness: filterStructure?.layerThickness,
+        poreSize: vm.metrics.poreSize ?? filterStructure?.poreSize,
+        materialType: vm.metrics.materialType,
+        layerThickness: vm.metrics.layerThickness ?? filterStructure?.layerThickness,
         removalEfficiency
       })
     }
@@ -167,7 +199,7 @@ export function FilterAnalysis(): React.JSX.Element {
       cancelAnimationFrame(rafRef.current)
       observer.disconnect()
     }
-  }, [loading, moleculeDefs, filterStructure, removalEfficiency])
+  }, [loading, moleculeDefs, filterStructure, removalEfficiency, vm.metrics])
 
   const handleMouseMove = (event: React.MouseEvent<HTMLCanvasElement>): void => {
     const rect = event.currentTarget.getBoundingClientRect()
@@ -195,7 +227,11 @@ export function FilterAnalysis(): React.JSX.Element {
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <button
-            onClick={() => navigate(`/filters/${id}`)}
+            onClick={() =>
+              navigate(`/filters/${id}`, {
+                state: isImported ? readImportedFilterSession(location) ?? undefined : undefined,
+              })
+            }
             className="rounded-[6px] p-1.5 transition-colors hover:bg-secondary"
           >
             <ArrowLeft size={16} strokeWidth={1.5} />
@@ -205,7 +241,14 @@ export function FilterAnalysis(): React.JSX.Element {
             <p className="font-mono text-xs text-muted-foreground">Filter {id ?? '-'}</p>
           </div>
         </div>
-        <Button variant="outline" onClick={() => navigate(`/filters/${id}/simulate`)}>
+        <Button
+          variant="outline"
+          onClick={() =>
+            navigate(`/filters/${id}/simulate`, {
+              state: isImported ? readImportedFilterSession(location) ?? undefined : undefined,
+            })
+          }
+        >
           <Microscope size={14} strokeWidth={1.5} />
           Compare With Simulation
         </Button>
@@ -243,9 +286,8 @@ export function FilterAnalysis(): React.JSX.Element {
             )}
           </div>
           <div className="rounded-[8px] border border-border bg-card p-3 text-sm text-muted-foreground">
-            Molecule density and composition are derived from the backend `experimentPayload.params`.
-            Filter membrane annotation comes from `filterStructure`, and right-side attenuation reflects
-            `resultPayload.removalEfficiency`.
+            Molecule density comes from `experimentPayload.params`. Membrane labels use aggregate filter geometry.
+            Removal uses the summary removal efficiency for all species.
           </div>
         </section>
 
@@ -292,25 +334,51 @@ export function FilterAnalysis(): React.JSX.Element {
           <div className="space-y-1.5 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Material</span>
-              <span className="font-mono text-xs">{filterStructure?.materialType ?? 'n/a'}</span>
+              <span className="font-mono text-xs">{vm.metrics.materialType}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Pore Size</span>
-              <span className="font-mono text-xs">{formatValue(filterStructure?.poreSize)} nm</span>
+              <span className="font-mono text-xs">{formatValue(vm.metrics.poreSize ?? undefined)} nm</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Layer Thickness</span>
-              <span className="font-mono text-xs">{formatValue(filterStructure?.layerThickness)} nm</span>
+              <span className="font-mono text-xs">{formatValue(vm.metrics.layerThickness ?? undefined)} nm</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Lattice Spacing</span>
-              <span className="font-mono text-xs">{formatValue(filterStructure?.latticeSpacing)} A</span>
+              <span className="font-mono text-xs">{formatValue(vm.metrics.latticeSpacing ?? undefined)} A</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Binding Energy</span>
-              <span className="font-mono text-xs">{formatValue(resultPayload?.bindingEnergy)} eV</span>
+              <span className="font-mono text-xs">{formatValue(vm.metrics.bindingEnergy ?? undefined)} eV</span>
             </div>
           </div>
+
+          {vm.layerRows.length > 1 ? (
+            <>
+              <div className="my-3 border-t border-border" />
+              <h3 className="mb-2 text-sm font-semibold">Per-layer (pollutant)</h3>
+              <div className="max-h-48 space-y-2 overflow-y-auto text-xs">
+                {vm.layerRows.map((row, i) => (
+                  <div key={`${row.pollutant}-${row.pollutantSymbol}-${i}`} className="rounded-[6px] border border-border bg-background/50 p-2">
+                    <div className="font-medium text-foreground">
+                      {row.pollutant !== 'n/a' ? row.pollutant : row.pollutantSymbol}
+                      {row.pollutantSymbol !== 'n/a' ? (
+                        <span className="ml-1 font-mono text-muted-foreground">({row.pollutantSymbol})</span>
+                      ) : null}
+                    </div>
+                    <div className="mt-1 grid grid-cols-2 gap-x-2 font-mono text-[10px] text-muted-foreground">
+                      <span>Removal {formatValue(row.removalEfficiency ?? undefined)}%</span>
+                      <span>BE {formatValue(row.bindingEnergy ?? undefined)} eV</span>
+                      <span>Pore {formatValue(row.poreSize ?? undefined)} nm</span>
+                      <span>Thick {formatValue(row.layerThickness ?? undefined)} nm</span>
+                      <span className="col-span-2">Mat. {row.materialType}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : null}
 
           <div className="my-3 border-t border-border" />
 

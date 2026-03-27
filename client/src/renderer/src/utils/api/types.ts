@@ -282,12 +282,43 @@ export type FilterStatusRefreshResponse = {
   updatedAt: string // ISO-8601
 }
 
+export type FilterStructureLayerSlice = {
+  connections?: Array<{ from: string | number; to: string | number; order?: number }>
+  atomPositions?: Array<{ id?: string | number; x: number; y: number; z: number; element: string }>
+  poreSize?: number
+  layerThickness?: number
+  latticeSpacing?: number
+  materialType?: string
+}
+
+export type FilterLayerRow = {
+  method?: string
+  poreSize?: number
+  pollutant?: string
+  materialType?: string
+  bindingEnergy?: number
+  layerThickness?: number
+  pollutantSymbol?: string
+  removalEfficiency?: number
+}
+
 export type FilterInfo = {
+  layers?: FilterLayerRow[]
   filterStructure?: {
     poreSize?: number
     layerThickness?: number
     latticeSpacing?: number
     materialType?: string
+    /** Some API bundles nest the same summary block here instead of under `filterInfo`. */
+    summaryMetrics?: {
+      parameter_count?: number
+      layer_count?: number
+      removalEfficiency?: number
+      bindingEnergy?: number
+      materialType?: string
+      usedQuantumComputer?: boolean
+    }
+    layers?: FilterStructureLayerSlice[]
     atomPositions?: Array<{ id?: string | number; x: number; y: number; z: number; element: string }>
     connections?: Array<{ from: string | number; to: string | number; order?: number }>
   }
@@ -306,9 +337,11 @@ export type FilterInfo = {
   }
   summaryMetrics?: {
     parameter_count?: number
+    layer_count?: number
     removalEfficiency?: number
     bindingEnergy?: number
     materialType?: string
+    usedQuantumComputer?: boolean
   }
 }
 
@@ -319,6 +352,7 @@ export type FilterDetailsSuccessResponse = {
   measurementId: string
   measurementName?: string
   status: 'Success'
+  usedQuantumComputer?: boolean
   filterInfo: FilterInfo
   createdAt: string // ISO-8601
 }

@@ -8,6 +8,11 @@ import { Button } from '@renderer/components/ui/button'
 import { usePollPendingFilterStatuses } from '@renderer/hooks/usePollPendingFilterStatuses'
 import { getFilters, getStudies } from '@renderer/utils/api/endpoints'
 import { type FilterListItem, type FilterListResponse, type Study, type StudyListResponse } from '@renderer/utils/api/types'
+import {
+  IMPORTED_FILTER_ROUTE_ID,
+  writeImportedFilterSession,
+  type ImportedFilterLocationState,
+} from '@renderer/utils/importedFilterPayload'
 
 const resolveFilters = (payload: FilterListResponse): FilterListItem[] => {
   if (Array.isArray(payload)) return payload
@@ -92,12 +97,12 @@ export function Filters(): React.JSX.Element {
     try {
       const text = await file.text()
       const parsed = JSON.parse(text) as unknown
-      navigate('/filters/visualize', {
-        state: {
-          uploadedFilterJson: parsed,
-          uploadedFileName: file.name,
-        },
-      })
+      const state: ImportedFilterLocationState = {
+        importedFilterJson: parsed,
+        importedFileName: file.name,
+      }
+      writeImportedFilterSession(state)
+      navigate(`/filters/${IMPORTED_FILTER_ROUTE_ID}`, { state })
     } catch (parseError) {
       const message =
         parseError instanceof Error ? parseError.message : 'Failed to parse JSON file.'
@@ -150,7 +155,7 @@ export function Filters(): React.JSX.Element {
             className="shrink-0"
           >
             <Upload size={16} strokeWidth={1.5} />
-            Visualize JSON
+            Open JSON…
           </Button>
         </div>
       </div>
