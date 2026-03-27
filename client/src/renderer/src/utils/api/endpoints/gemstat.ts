@@ -369,14 +369,20 @@ const normalizeStationRows = (payload: Record<string, unknown>): GemstatLocation
       const sampleTime = sampleTimeRaw.length >= 5 ? sampleTimeRaw.slice(0, 5) : sampleTimeRaw
       const pollutants = Array.isArray(record.pollutants) ? record.pollutants : []
       const parameters: MeasurementParameter[] = pollutants
-        .map((pollutant) => {
+        .map((pollutant): MeasurementParameter | null => {
           const p = (pollutant ?? {}) as Record<string, unknown>
           if (typeof p.parameterCode !== 'string') return null
           if (typeof p.value !== 'number' || !Number.isFinite(p.value)) return null
           return {
             parameterCode: p.parameterCode,
-            parameterName: typeof p.parameterName === 'string' ? p.parameterName : null,
-            unit: typeof p.unit === 'string' ? p.unit : null,
+            parameterName:
+              typeof p.parameterName === 'string' && p.parameterName.trim().length > 0
+                ? p.parameterName
+                : undefined,
+            unit:
+              typeof p.unit === 'string' && p.unit.trim().length > 0
+                ? p.unit
+                : undefined,
             value: p.value
           }
         })
