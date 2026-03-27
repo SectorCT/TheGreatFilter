@@ -190,6 +190,9 @@ def run_generation(filter_id: str, measurement_id: str, measurement_data: dict) 
         atom_positions, connections = generate_atom_positions(
             lattice_spacing=result["lattice_spacing"],
             material_type=result["material_type"],
+            pollutant_symbol=pollutant_symbol,
+            functionalization_density=result.get("functionalization_density", 0.6),
+            doping_level=result.get("doping_level", 0.15),
         )
 
         filter_info = {
@@ -222,95 +225,663 @@ def run_generation(filter_id: str, measurement_id: str, measurement_data: dict) 
 
 # ── Atom position generation for 3D visualization ───────────────────────────
 
+# C-C bond length derived from graphene lattice constant:  a / sqrt(3)
+# (lattice_spacing here is the lattice constant, 2.46 Å by default)
+_SQRT3 = math.sqrt(3)
+
+# Pollutants that favour carboxyl chelation (heavy metals / transition metals)
+# Stored UPPERCASE so comparisons can use .upper() without case mismatch.
+_HEAVY_METALS = {
+    "PB", "CD", "HG", "CU", "NI", "ZN", "FE", "CO", "CR", "MN",
+    "AS", "SN", "SB", "BA", "SR", "BI", "V",
+}
+# Pollutants that favour amine groups (anionic / nitrogen-based)
+_ANION_POLLUTANTS = {"F", "CL", "BR", "N", "P", "S", "SE"}
+
+
 def generate_atom_positions(
     lattice_spacing: float,
     material_type: str,
+    pollutant_symbol: str = "C",
+    functionalization_density: float = 0.6,
+    doping_level: float = 0.15,
 ) -> tuple[list[dict], list[dict]]:
     """Generate 3D atom coordinates and bonds for visualization.
+
+    Args:
+        lattice_spacing:           graphene lattice constant in Å (2.46)
+        material_type:             one of graphene | cnt | graphene_oxide |
+                                   composite | mof_like
+        pollutant_symbol:          drives which functional groups dominate
+        functionalization_density: fraction of edge atoms that receive a
+                                   functional group (0-1), for oxide/composite
+        doping_level:              fraction of C replaced by pyridinic N,
+                                   for oxide/composite
 
     Returns:
         (atom_positions, connections)
         atom_positions — list of {id, x, y, z, element}
         connections    — list of {"from": int, "to": int, "order": int}
     """
-    a = lattice_spacing  # angstroms
+    a = lattice_spacing
 
     if material_type == "cnt":
-        raw = _generate_cnt_positions(a)
-    else:
-        raw = _generate_graphene_positions(a)
+        raw, bonds = _generate_cnt(a)
+    elif material_type == "graphene_oxide":
+        raw, bonds = _generate_graphene_oxide(
+            a, pollutant_symbol, functionalization_density, doping_level
+        )
+    elif material_type == "composite":
+        raw, bonds = _generate_composite(
+            a, pollutant_symbol, functionalization_density, doping_level
+        )
+    elif material_type == "mof_like":
+        raw, bonds = _generate_mof(a, pollutant_symbol)
+    else:  # "graphene" default
+        raw, bonds = _generate_graphene(a)
 
     positions: list[dict] = [dict(id=i, **p) for i, p in enumerate(raw)]
-
-    # Compute bonds: k-NN (k=3) on all carbon atoms
-    carbon_idx = [p["id"] for p in positions if p["element"] == "C"]
-    bond_set: set[tuple[int, int]] = set()
-    k = 3
-    for i in carbon_idx:
-        dists: list[tuple[float, int]] = []
-        for j in carbon_idx:
-            if i == j:
-                continue
-            dx = positions[i]["x"] - positions[j]["x"]
-            dy = positions[i]["y"] - positions[j]["y"]
-            dz = positions[i]["z"] - positions[j]["z"]
-            dists.append((dx * dx + dy * dy + dz * dz, j))
-        dists.sort()
-        for _, j in dists[:k]:
-            bond_set.add((min(i, j), max(i, j)))
-
     connections = [
-        {"from": a, "to": b, "order": 1}
-        for a, b in sorted(bond_set)
+        {"from": fr, "to": to, "order": order}
+        for fr, to, order in sorted(bonds)
     ]
-
     return positions, connections
 
 
-def _generate_graphene_positions(a: float) -> list[dict]:
-    """Graphene patch: 5×3 hexagonal supercell = 30 C atoms.
+# ── Bond helpers ─────────────────────────────────────────────────────────────
 
-    Uses the standard graphene primitive vectors:
-      a1 = (a, 0),  a2 = (a/2, a√3/2)
-    with two-atom basis at (0,0) and (a/2, a/(2√3)).
+def _cc_bond(a: float) -> float:
+    """C-C bond length for a graphene lattice with constant a."""
+    return a / _SQRT3
+
+
+def _compute_bonds_by_distance(
+    atoms: list[dict],
+    threshold_sq: float,
+    allowed_elements: set | None = None,
+) -> list[tuple]:
+    """Return (i, j, order=1) pairs where atoms i,j are within sqrt(threshold_sq).
+
+    Only considers atoms whose element is in allowed_elements (all if None).
+    Uses the atom list index as the id.
+    """
+    bonds = []
+    n = len(atoms)
+    for i in range(n):
+        if allowed_elements and atoms[i]["element"] not in allowed_elements:
+            continue
+        for j in range(i + 1, n):
+            if allowed_elements and atoms[j]["element"] not in allowed_elements:
+                continue
+            dx = atoms[i]["x"] - atoms[j]["x"]
+            dy = atoms[i]["y"] - atoms[j]["y"]
+            dz = atoms[i]["z"] - atoms[j]["z"]
+            if dx * dx + dy * dy + dz * dz <= threshold_sq:
+                bonds.append((i, j, 1))
+    return bonds
+
+
+def _find_edge_atoms(
+    atoms: list[dict], bonds: list[tuple], element: str = "C"
+) -> set:
+    """Return indices of atoms of given element with fewer than 3 bonds."""
+    degree: dict = {}
+    for i, p in enumerate(atoms):
+        if p["element"] == element:
+            degree[i] = 0
+    for i, j, _ in bonds:
+        if i in degree:
+            degree[i] = degree.get(i, 0) + 1
+        if j in degree:
+            degree[j] = degree.get(j, 0) + 1
+    return {idx for idx, deg in degree.items() if deg < 3}
+
+
+# ── Functional group attachment ───────────────────────────────────────────────
+
+def _group_preference(pollutant_symbol: str) -> str:
+    """Select dominant functional group based on pollutant chemistry."""
+    sym = pollutant_symbol.upper() if pollutant_symbol else "C"
+    sym = sym[:2].rstrip("0123456789+-")
+    if sym in _HEAVY_METALS:
+        return "cooh"   # carboxyl chelates heavy metals
+    if sym in _ANION_POLLUTANTS:
+        return "nh2"    # amine captures anions
+    return "oh"         # hydroxyl is the safe default
+
+
+def _add_functional_groups(
+    atoms: list[dict],
+    bonds: list[tuple],
+    edge_indices: set,
+    cc_bond: float,
+    pollutant_symbol: str,
+    density: float,
+    rng,
+) -> tuple[list[dict], list[tuple]]:
+    """Attach functional groups to a subset of edge carbon atoms.
+
+    Groups added (selected probabilistically per edge atom):
+      -OH   (hydroxyl):  O above the plane + H further out
+      -COOH (carboxyl):  C=O + O-H chain sticking out from edge
+      -NH2  (amine):     N + 2H sticking out from edge
+      epoxide: in-plane O bridging two adjacent carbons
+
+    Returns updated (atoms, bonds) with new atoms appended.
+    """
+    pref = _group_preference(pollutant_symbol)
+    if pref == "cooh":
+        weights = [0.15, 0.55, 0.15, 0.15]
+    elif pref == "nh2":
+        weights = [0.20, 0.10, 0.55, 0.15]
+    else:
+        weights = [0.50, 0.20, 0.15, 0.15]
+
+    group_names = ["oh", "cooh", "nh2", "epoxide"]
+
+    bond_co = 1.43
+    bond_oh = 0.96
+    bond_cn = 1.47
+    bond_nh = 1.01
+    bond_cc_func = 1.52
+
+    new_atoms = list(atoms)
+    new_bonds = list(bonds)
+
+    candidates = sorted(edge_indices)
+    edge_set = set(candidates)
+    edge_pairs_used: set = set()
+
+    for idx in candidates:
+        if rng.random() > density:
+            continue
+
+        group = rng.choices(group_names, weights=weights, k=1)[0]
+        ax, ay, az = atoms[idx]["x"], atoms[idx]["y"], atoms[idx]["z"]
+
+        neighbours = [
+            j for (i, j, _) in new_bonds if i == idx
+        ] + [i for (i, j, _) in new_bonds if j == idx]
+        if neighbours:
+            nx2 = sum(new_atoms[n]["x"] for n in neighbours) / len(neighbours)
+            ny2 = sum(new_atoms[n]["y"] for n in neighbours) / len(neighbours)
+            nz2 = sum(new_atoms[n]["z"] for n in neighbours) / len(neighbours)
+            dx, dy, dz = ax - nx2, ay - ny2, az - nz2
+            length = math.sqrt(dx * dx + dy * dy + dz * dz) or 1.0
+            dx, dy, dz = dx / length, dy / length, dz / length
+        else:
+            dx, dy, dz = 1.0, 0.0, 0.0
+
+        if group == "oh":
+            oi = len(new_atoms)
+            new_atoms.append({
+                "x": round(ax + dx * bond_co, 4),
+                "y": round(ay + dy * bond_co, 4),
+                "z": round(az + dz * bond_co + 0.5, 4),
+                "element": "O",
+            })
+            hi = len(new_atoms)
+            new_atoms.append({
+                "x": round(ax + dx * (bond_co + bond_oh), 4),
+                "y": round(ay + dy * (bond_co + bond_oh), 4),
+                "z": round(az + dz * (bond_co + bond_oh) + 0.8, 4),
+                "element": "H",
+            })
+            new_bonds.append((idx, oi, 1))
+            new_bonds.append((oi, hi, 1))
+
+        elif group == "cooh":
+            ci = len(new_atoms)
+            new_atoms.append({
+                "x": round(ax + dx * bond_cc_func, 4),
+                "y": round(ay + dy * bond_cc_func, 4),
+                "z": round(az + dz * bond_cc_func, 4),
+                "element": "C",
+            })
+            new_bonds.append((idx, ci, 1))
+
+            o1i = len(new_atoms)
+            new_atoms.append({
+                "x": round(ax + dx * bond_cc_func + dy * 1.20, 4),
+                "y": round(ay + dy * bond_cc_func - dx * 1.20, 4),
+                "z": round(az + 0.3, 4),
+                "element": "O",
+            })
+            new_bonds.append((ci, o1i, 2))
+
+            o2i = len(new_atoms)
+            new_atoms.append({
+                "x": round(ax + dx * (bond_cc_func + bond_co), 4),
+                "y": round(ay + dy * (bond_cc_func + bond_co), 4),
+                "z": round(az - 0.3, 4),
+                "element": "O",
+            })
+            hi = len(new_atoms)
+            new_atoms.append({
+                "x": round(ax + dx * (bond_cc_func + bond_co + bond_oh), 4),
+                "y": round(ay + dy * (bond_cc_func + bond_co + bond_oh), 4),
+                "z": round(az - 0.5, 4),
+                "element": "H",
+            })
+            new_bonds.append((ci, o2i, 1))
+            new_bonds.append((o2i, hi, 1))
+
+        elif group == "nh2":
+            ni = len(new_atoms)
+            new_atoms.append({
+                "x": round(ax + dx * bond_cn, 4),
+                "y": round(ay + dy * bond_cn, 4),
+                "z": round(az + dz * bond_cn + 0.2, 4),
+                "element": "N",
+            })
+            new_bonds.append((idx, ni, 1))
+
+            perp_x, perp_y = -dy, dx
+            for sign in (+1, -1):
+                hx = new_atoms[ni]["x"] + (dx * 0.3 + sign * perp_x * 0.5) * bond_nh
+                hy = new_atoms[ni]["y"] + (dy * 0.3 + sign * perp_y * 0.5) * bond_nh
+                hz = new_atoms[ni]["z"] + bond_nh * 0.3
+                hi2 = len(new_atoms)
+                new_atoms.append({
+                    "x": round(hx, 4), "y": round(hy, 4),
+                    "z": round(hz, 4), "element": "H",
+                })
+                new_bonds.append((ni, hi2, 1))
+
+        elif group == "epoxide":
+            adj_edge = [
+                j for (i, j, _) in new_bonds
+                if i == idx and j in edge_set and frozenset({idx, j}) not in edge_pairs_used
+            ] + [
+                i for (i, j, _) in new_bonds
+                if j == idx and i in edge_set and frozenset({idx, i}) not in edge_pairs_used
+            ]
+            if adj_edge:
+                partner = adj_edge[0]
+                edge_pairs_used.add(frozenset({idx, partner}))
+                bx2 = (new_atoms[idx]["x"] + new_atoms[partner]["x"]) / 2
+                by2 = (new_atoms[idx]["y"] + new_atoms[partner]["y"]) / 2
+                bz2 = new_atoms[idx]["z"] + 1.0
+                oi = len(new_atoms)
+                new_atoms.append({
+                    "x": round(bx2, 4), "y": round(by2, 4),
+                    "z": round(bz2, 4), "element": "O",
+                })
+                new_bonds.append((idx, oi, 1))
+                new_bonds.append((partner, oi, 1))
+
+    return new_atoms, new_bonds
+
+
+# ── Graphene sheet (base) ─────────────────────────────────────────────────────
+
+def _generate_graphene_sheet(
+    a: float,
+    nx: int = 6,
+    ny: int = 4,
+    z_offset: float = 0.0,
+) -> list[dict]:
+    """Hexagonal graphene patch — nx x ny supercell = 2*nx*ny C atoms.
+
+    Primitive vectors: a1 = (a, 0),  a2 = (a/2, a*sqrt(3)/2)
+    Two-atom basis: A=(0,0)  B=(a/2, a/(2*sqrt(3)))  => C-C = a/sqrt(3) ~ 1.42 A
     """
     a2x = a * 0.5
-    a2y = a * math.sqrt(3) / 2
+    a2y = a * _SQRT3 / 2
     bx  = a / 2
-    by  = a / (2 * math.sqrt(3))
-    positions = []
-    for n in range(5):
-        for m in range(3):
+    by  = a / (2 * _SQRT3)
+    atoms = []
+    for n in range(nx):
+        for m in range(ny):
             ox = n * a + m * a2x
             oy = m * a2y
-            positions.append({"x": round(ox,      4), "y": round(oy,      4), "z": 0.0, "element": "C"})
-            positions.append({"x": round(ox + bx, 4), "y": round(oy + by, 4), "z": 0.0, "element": "C"})
-    return positions
+            atoms.append({"x": round(ox,      4), "y": round(oy,      4),
+                           "z": round(z_offset, 4), "element": "C"})
+            atoms.append({"x": round(ox + bx, 4), "y": round(oy + by, 4),
+                           "z": round(z_offset, 4), "element": "C"})
+    return atoms
 
 
-def _generate_cnt_positions(a: float) -> list[dict]:
-    """CNT segment: 5 rings × 12 C atoms = 60 atoms.
+def _apply_n_doping(
+    atoms: list[dict],
+    doping_level: float,
+    rng,
+    z_offset: float | None = None,
+) -> list[dict]:
+    """Randomly replace a fraction of C atoms with pyridinic N.
 
-    Consecutive rings are spaced a/2 apart along z and rotated
-    by half a step (π/12) to reproduce the armchair bond pattern.
+    If z_offset is given, only atoms at that z layer are doped.
     """
-    N_RINGS    = 5
+    result = []
+    for atom in atoms:
+        if atom["element"] == "C":
+            if z_offset is None or abs(atom["z"] - z_offset) < 0.01:
+                if rng.random() < doping_level:
+                    result.append({**atom, "element": "N"})
+                    continue
+        result.append(atom)
+    return result
+
+
+# ── Plain graphene ────────────────────────────────────────────────────────────
+
+def _generate_graphene(a: float) -> tuple[list[dict], list[tuple]]:
+    """6x4 graphene supercell — 48 C atoms, correct distance-cutoff bonds."""
+    atoms = _generate_graphene_sheet(a, nx=6, ny=4)
+    cc = _cc_bond(a)
+    thresh_sq = (cc * 1.15) ** 2
+    bonds = _compute_bonds_by_distance(atoms, thresh_sq, {"C"})
+    return atoms, bonds
+
+
+# ── Armchair CNT (fixed geometry) ─────────────────────────────────────────────
+
+def _generate_cnt(a: float) -> tuple[list[dict], list[tuple]]:
+    """Armchair (6,6) CNT segment — 10 rings x 12 atoms = 120 C atoms.
+
+    Correct geometry:
+      cc_bond  = a / sqrt(3) ~ 1.42 A
+      radius   = N_PER_RING * cc_bond / (2*pi)  (circumference = 12*cc for n=6)
+      z_step   = sqrt(cc² − 2r²(1−cos(π/N)))  so each inter-ring bond = cc exactly
+    Alternating rings are rotated by pi/12 to form the armchair bridges.
+
+    The old formula (cc*sqrt(3)/4 ≈ 0.615 Å) was too small: it put ring k and
+    ring k+2 only 1.23 Å apart (below the 1.63 Å threshold), creating false bonds
+    and pushing valency to 6–8.  The corrected value is ~1.231 Å.
+    """
+    cc = _cc_bond(a)
     N_PER_RING = 12
-    radius     = a * 3 / (2 * math.pi)
-    z_step     = a * 0.5
-    positions  = []
+    N_RINGS    = 10
+    radius     = N_PER_RING * cc / (2 * math.pi)
+    # xy chord between adjacent atoms in consecutive (rotated) rings
+    xy_sq  = 2 * radius ** 2 * (1 - math.cos(math.pi / N_PER_RING))
+    z_step = math.sqrt(cc ** 2 - xy_sq)   # ≈ 1.231 Å
+
+    atoms: list[dict] = []
     for ring in range(N_RINGS):
         angle_offset = (ring % 2) * (math.pi / N_PER_RING)
         z = round(ring * z_step, 4)
         for i in range(N_PER_RING):
             angle = 2 * math.pi * i / N_PER_RING + angle_offset
-            positions.append({
+            atoms.append({
                 "x": round(radius * math.cos(angle), 4),
                 "y": round(radius * math.sin(angle), 4),
                 "z": z,
                 "element": "C",
             })
-    return positions
+
+    thresh_sq = (cc * 1.15) ** 2
+    bonds = _compute_bonds_by_distance(atoms, thresh_sq, {"C"})
+    return atoms, bonds
+
+
+# ── Graphene oxide ─────────────────────────────────────────────────────────────
+
+def _generate_graphene_oxide(
+    a: float,
+    pollutant_symbol: str,
+    density: float,
+    doping_level: float,
+) -> tuple[list[dict], list[tuple]]:
+    """N-doped graphene with edge functional groups.
+
+    Structure:
+      - 6x4 graphene supercell (48 C atoms)
+      - ~doping_level fraction of C replaced by pyridinic N
+      - Edge atoms (valency < 3) receive -OH / -COOH / -NH2 / epoxide
+        selected by pollutant chemistry and density parameter
+    """
+    import random as _rng
+    rng = _rng.Random(42)
+
+    atoms = _generate_graphene_sheet(a, nx=6, ny=4)
+    atoms = _apply_n_doping(atoms, doping_level, rng)
+
+    cc = _cc_bond(a)
+    thresh_sq = (cc * 1.15) ** 2
+    bonds = _compute_bonds_by_distance(atoms, thresh_sq, {"C", "N"})
+
+    edge = _find_edge_atoms(atoms, bonds, element="C")
+    atoms, bonds = _add_functional_groups(
+        atoms, bonds, edge, cc, pollutant_symbol, density, rng
+    )
+    return atoms, bonds
+
+
+# ── Composite bilayer ─────────────────────────────────────────────────────────
+
+def _generate_composite(
+    a: float,
+    pollutant_symbol: str,
+    density: float,
+    doping_level: float,
+) -> tuple[list[dict], list[tuple]]:
+    """Twisted bilayer graphene with mixed functionalization.
+
+    Two graphene sheets separated by 3.35 A (graphite van der Waals gap):
+      Layer 0 (z=0):    N-doped, carboxyl-rich (heavy-metal scavenging)
+      Layer 1 (z=3.35): OH/amine-rich, rotated 30 deg (Moire-like twist)
+
+    The two layers are NOT covalently bonded (physisorption only), which
+    is physically correct for van der Waals heterostructures.
+    """
+    import random as _rng
+    VDW_GAP = 3.35
+    TWIST   = math.pi / 6
+
+    rng0 = _rng.Random(7)
+    rng1 = _rng.Random(13)
+
+    cc = _cc_bond(a)
+    thresh_sq = (cc * 1.15) ** 2
+
+    # Layer 0 — N-doped, COOH-rich
+    layer0 = _generate_graphene_sheet(a, nx=6, ny=4, z_offset=0.0)
+    layer0 = _apply_n_doping(layer0, doping_level, rng0, z_offset=0.0)
+    bonds0 = _compute_bonds_by_distance(layer0, thresh_sq, {"C", "N"})
+    edge0  = _find_edge_atoms(layer0, bonds0, element="C")
+    layer0, bonds0 = _add_functional_groups(
+        layer0, bonds0, edge0, cc, "Pb", density, rng0,
+    )
+
+    # Layer 1 — OH/amine-rich, twisted, shifted up by VDW_GAP
+    raw1 = _generate_graphene_sheet(a, nx=6, ny=4, z_offset=0.0)
+    cx = sum(p["x"] for p in raw1) / len(raw1)
+    cy = sum(p["y"] for p in raw1) / len(raw1)
+    cos_t, sin_t = math.cos(TWIST), math.sin(TWIST)
+    layer1 = []
+    for p in raw1:
+        rx, ry = p["x"] - cx, p["y"] - cy
+        layer1.append({
+            "x":       round(cx + rx * cos_t - ry * sin_t, 4),
+            "y":       round(cy + rx * sin_t + ry * cos_t, 4),
+            "z":       round(p["z"] + VDW_GAP, 4),
+            "element": p["element"],
+        })
+    layer1 = _apply_n_doping(layer1, doping_level * 0.5, rng1)
+
+    bonds1_raw = _compute_bonds_by_distance(layer1, thresh_sq, {"C", "N"})
+    edge1 = _find_edge_atoms(layer1, bonds1_raw, element="C")
+    layer1, bonds1_func = _add_functional_groups(
+        layer1, bonds1_raw, edge1, cc, pollutant_symbol, density * 0.8, rng1,
+    )
+
+    offset = len(layer0)
+    bonds1_reindexed = [(i + offset, j + offset, o) for i, j, o in bonds1_func]
+
+    all_atoms = layer0 + layer1
+    all_bonds = bonds0 + bonds1_reindexed
+    return all_atoms, all_bonds
+
+
+# ── MOF-like structure ────────────────────────────────────────────────────────
+
+def _generate_mof(
+    a: float,
+    pollutant_symbol: str,
+) -> tuple[list[dict], list[tuple]]:
+    """Metal-Organic Framework inspired cage + graphene base.
+
+    Architecture (loosely based on MOF-5 / HKUST-1 motifs):
+      - Graphene base sheet (z=0) — the support membrane, N-doped + OH groups
+      - 4 metal nodes (Fe for heavy-metal filters, Zn otherwise)
+        arranged in a 2x2 square above the sheet at z=3.5 A
+      - Each node has 4 carboxylate-style O ligands at cardinal directions
+      - C2 organic linkers with bridging O connect adjacent metal nodes
+      - A smaller heavily-N-doped cap sheet at z=7 A anchored to the nodes
+
+    Results in ~150+ atoms across C, O, N, Fe/Zn, H — visually very dense.
+    """
+    import random as _rng
+    rng = _rng.Random(99)
+
+    sym = (pollutant_symbol or "C").upper()[:2].rstrip("0123456789+-")
+    metal = "Fe" if sym in _HEAVY_METALS else "Zn"
+
+    cc = _cc_bond(a)
+    thresh_sq = (cc * 1.15) ** 2
+
+    # Base graphene sheet
+    base = _generate_graphene_sheet(a, nx=5, ny=3, z_offset=0.0)
+    base = _apply_n_doping(base, 0.10, rng)
+    bonds_base = _compute_bonds_by_distance(base, thresh_sq, {"C", "N"})
+    edge_base  = _find_edge_atoms(base, bonds_base, element="C")
+    base, bonds_base = _add_functional_groups(
+        base, bonds_base, edge_base, cc, pollutant_symbol, 0.4, rng,
+    )
+
+    all_atoms = list(base)
+    all_bonds = list(bonds_base)
+
+    # Centroid of the raw base (first 30 atoms before functional groups)
+    n_base_raw = 30
+    c_base_x = sum(p["x"] for p in base[:n_base_raw]) / n_base_raw
+    c_base_y = sum(p["y"] for p in base[:n_base_raw]) / n_base_raw
+
+    # 4 metal nodes in a 2x2 grid at z=3.5 A
+    node_spacing = a * 2.5
+    node_z = 3.5
+    node_xys = [
+        (c_base_x - node_spacing / 2, c_base_y - node_spacing / 2),
+        (c_base_x + node_spacing / 2, c_base_y - node_spacing / 2),
+        (c_base_x - node_spacing / 2, c_base_y + node_spacing / 2),
+        (c_base_x + node_spacing / 2, c_base_y + node_spacing / 2),
+    ]
+
+    metal_indices: list[int] = []
+    for (mx, my) in node_xys:
+        mi = len(all_atoms)
+        metal_indices.append(mi)
+        all_atoms.append({"x": round(mx, 4), "y": round(my, 4),
+                          "z": round(node_z, 4), "element": metal})
+
+        # 4 carboxylate O ligands (square-planar coordination)
+        for lox, loy, loz in [
+            ( 2.05,  0.00,  0.3),
+            (-2.05,  0.00,  0.3),
+            ( 0.00,  2.05, -0.3),
+            ( 0.00, -2.05, -0.3),
+        ]:
+            oi = len(all_atoms)
+            all_atoms.append({
+                "x": round(mx + lox, 4), "y": round(my + loy, 4),
+                "z": round(node_z + loz, 4), "element": "O",
+            })
+            all_bonds.append((mi, oi, 1))
+
+    # Organic linkers between adjacent node pairs: (0,1), (2,3), (0,2), (1,3)
+    linker_pairs = [(0, 1), (2, 3), (0, 2), (1, 3)]
+    for na_i, nb_i in linker_pairs:
+        ax2, ay2 = node_xys[na_i]
+        bx2, by2 = node_xys[nb_i]
+        prev_c = None
+        for frac in (0.25, 0.5, 0.75):
+            ci = len(all_atoms)
+            lx = ax2 + frac * (bx2 - ax2)
+            ly = ay2 + frac * (by2 - ay2)
+            lz = node_z + 0.5 * math.sin(frac * math.pi)
+            all_atoms.append({
+                "x": round(lx, 4), "y": round(ly, 4),
+                "z": round(lz, 4), "element": "C",
+            })
+            if prev_c is not None:
+                all_bonds.append((prev_c, ci, 1))
+            prev_c = ci
+
+        # Bridging O between the two middle linker carbons
+        mid_c1 = len(all_atoms) - 2
+        mid_c2 = len(all_atoms) - 1
+        p1 = all_atoms[mid_c1]
+        p2 = all_atoms[mid_c2]
+        oi = len(all_atoms)
+        all_atoms.append({
+            "x": round((p1["x"] + p2["x"]) / 2, 4),
+            "y": round((p1["y"] + p2["y"]) / 2, 4),
+            "z": round(node_z + 1.3, 4),
+            "element": "O",
+        })
+        all_bonds.append((mid_c1, oi, 1))
+        all_bonds.append((mid_c2, oi, 1))
+
+        # Bond linker end-Cs to metal node O ligands (the nearest O of each node)
+        linker_start = len(all_atoms) - 4  # first C of this linker
+        linker_end   = len(all_atoms) - 2  # last C of this linker (before bridge O)
+        for node_atom_i, linker_c in [
+            (metal_indices[na_i], linker_start),
+            (metal_indices[nb_i], linker_end),
+        ]:
+            # Find the O ligand of this node closest to the linker carbon
+            node_o_candidates = [
+                b_idx for (a_idx, b_idx, _) in all_bonds if a_idx == node_atom_i
+                and all_atoms[b_idx]["element"] == "O"
+            ]
+            if node_o_candidates:
+                lc = all_atoms[linker_c]
+                nearest_o = min(
+                    node_o_candidates,
+                    key=lambda oi2: (
+                        (all_atoms[oi2]["x"] - lc["x"]) ** 2
+                        + (all_atoms[oi2]["y"] - lc["y"]) ** 2
+                    ),
+                )
+                all_bonds.append((linker_c, nearest_o, 1))
+
+    # Cap sheet at z=7 A — heavily N-doped, anchored to metal nodes
+    cap_z = 7.0
+    cap_raw = _generate_graphene_sheet(a, nx=4, ny=3, z_offset=cap_z)
+    cap_cx = sum(p["x"] for p in cap_raw) / len(cap_raw)
+    cap_cy = sum(p["y"] for p in cap_raw) / len(cap_raw)
+    cap = [
+        {**p,
+         "x": round(p["x"] - cap_cx + c_base_x, 4),
+         "y": round(p["y"] - cap_cy + c_base_y, 4)}
+        for p in cap_raw
+    ]
+    cap = _apply_n_doping(cap, 0.25, rng)
+
+    cap_offset = len(all_atoms)
+    all_atoms.extend(cap)
+
+    bonds_cap_raw = _compute_bonds_by_distance(cap, thresh_sq, {"C", "N"})
+    all_bonds.extend(
+        (i + cap_offset, j + cap_offset, o) for i, j, o in bonds_cap_raw
+    )
+
+    # Anchor 4 cap edge atoms to the 4 metal nodes via coordination bonds
+    edge_cap = sorted(_find_edge_atoms(cap, bonds_cap_raw, element="C"))
+    for ei in edge_cap[:4]:
+        cap_atom = all_atoms[cap_offset + ei]
+        closest_metal = min(
+            metal_indices,
+            key=lambda mi: (
+                (all_atoms[mi]["x"] - cap_atom["x"]) ** 2
+                + (all_atoms[mi]["y"] - cap_atom["y"]) ** 2
+                + (all_atoms[mi]["z"] - cap_atom["z"]) ** 2
+            ),
+        )
+        all_bonds.append((cap_offset + ei, closest_metal, 1))
+
+    return all_atoms, all_bonds
 
 
 # ── Molecular structure builders ─────────────────────────────────────────────
