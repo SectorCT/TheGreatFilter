@@ -163,17 +163,17 @@ def refresh_station_summaries(station_ids=None):
 
     annotated_stations = stations.annotate(
         public_measurement_count=Count("measurements", filter=Q(measurements__is_public=True)),
-        latest_measurement_id=Subquery(latest_measurements.values("id")[:1]),
-        latest_sample_date=Subquery(latest_measurements.values("sample_date")[:1]),
-        latest_sample_time=Subquery(latest_measurements.values("sample_time")[:1]),
+        latest_measurement_id_value=Subquery(latest_measurements.values("id")[:1]),
+        latest_sample_date_value=Subquery(latest_measurements.values("sample_date")[:1]),
+        latest_sample_time_value=Subquery(latest_measurements.values("sample_time")[:1]),
     )
 
     stations_to_update = []
     for station in annotated_stations.iterator():
         station.measurement_count = getattr(station, "public_measurement_count", 0) or 0
-        station.latest_measurement_id = getattr(station, "latest_measurement_id", None)
-        station.latest_sample_date = getattr(station, "latest_sample_date", None)
-        station.latest_sample_time = getattr(station, "latest_sample_time", None)
+        station.latest_measurement_id = getattr(station, "latest_measurement_id_value", None)
+        station.latest_sample_date = getattr(station, "latest_sample_date_value", None)
+        station.latest_sample_time = getattr(station, "latest_sample_time_value", None)
         stations_to_update.append(station)
 
     if stations_to_update:
