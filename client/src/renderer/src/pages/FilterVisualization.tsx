@@ -1,16 +1,34 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Loader2 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import * as $3Dmol from '3dmol'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
-import { Button } from '@renderer/components/ui/button'
-import { filters } from '@renderer/data/mockData'
+import { getFilterDetails } from '@renderer/utils/api/endpoints'
+import type { FilterInfo } from '@renderer/utils/api/types'
+import { atomPositionsToXyz, buildFilterInfoViewModel } from '@renderer/utils/filterInfoViewModel'
 
 type SelectedAtomInfo = {
   index: number | string
   element: string
   bonds: number
   bondTargets: string
+}
+type ClickableAtom = {
+  serial?: number
+  index?: number | string
+  bonds?: Array<number | string>
+  elem?: string
+  x: number
+  y: number
+  z: number
+}
+type ModelAtom = {
+  elem: string
+  x: number
+  y: number
+  z: number
+  bonds: number[]
+  bondOrder: number[]
 }
 
 const BASE_ELEMENTS = ['C', 'N', 'O', 'S', 'H'] as const
@@ -39,26 +57,107 @@ Stress test random structure
 ${atoms.join('\n')}`
 }
 
+function downsampleXyz(xyz: string, maxAtoms: number): string {
+  const lines = xyz.split('\n')
+  const declaredCount = Number(lines[0] ?? 0)
+  if (!Number.isFinite(declaredCount) || declaredCount <= 0) return xyz
+  if (declaredCount <= maxAtoms) return xyz
+
+  const headerLine = lines[1] ?? 'Generated structure'
+  const atomLines = lines.slice(2)
+  const step = Math.ceil(declaredCount / maxAtoms)
+  const sampled: string[] = []
+  for (let i = 0; i < atomLines.length; i += step) {
+    sampled.push(atomLines[i])
+  }
+  return `${sampled.length}\n${headerLine} (downsampled)\n${sampled.join('\n')}`
+}
+
 export function FilterVisualization(): React.JSX.Element {
   const navigate = useNavigate()
   const { id } = useParams()
-  const filter = useMemo(() => filters.find((item) => item.id === id) ?? filters[0], [id])
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const [seed, setSeed] = useState(() => Date.now())
+  const [seed] = useState(() => Date.now())
   const [selectedAtom, setSelectedAtom] = useState<SelectedAtomInfo | null>(null)
-
-  const xyz = useMemo(() => buildRandomMoleculeXYZ(seed), [seed])
-  const atomCount = useMemo(() => Number(xyz.split('\n')[0] ?? 0), [xyz])
+  const [loading, setLoading] = useState(Boolean(id))
+  const [filterInfo, setFilterInfo] = useState<FilterInfo | null>(null)
+  const [error, setError] = useState<string | null>(id ? null : 'Missing filter ID.')
 
   useEffect(() => {
+    let cancelled = false
+    if (!id) {
+      return
+    }
+    getFilterDetails(id)
+      .then((resp) => {
+        if (!cancelled) setFilterInfo(resp.filterInfo)
+      })
+      .catch((fetchError) => {
+        if (!cancelled) {
+          setFilterInfo(null)
+          setError(fetchError instanceof Error ? fetchError.message : 'Failed to load filter structure.')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [id])
+
+  const vm = useMemo(() => buildFilterInfoViewModel(filterInfo), [filterInfo])
+  const usingRealStructure = vm.atomPositions.length > 0
+  const hasExplicitConnections = vm.atomConnections.length > 0
+  const rawXyz = useMemo(
+    () => (usingRealStructure ? atomPositionsToXyz(vm.atomPositions) : buildRandomMoleculeXYZ(seed)),
+    [seed, usingRealStructure, vm.atomPositions]
+  )
+  const rawAtomCount = useMemo(() => Number(rawXyz.split('\n')[0] ?? 0), [rawXyz])
+  const xyz = useMemo(
+    () => (hasExplicitConnections ? rawXyz : downsampleXyz(rawXyz, 500)),
+    [rawXyz, hasExplicitConnections]
+  )
+  const atomCount = useMemo(() => Number(xyz.split('\n')[0] ?? 0), [xyz])
+  const isDownsampled = rawAtomCount > atomCount
+  const modelAtoms = useMemo(() => {
+    if (!hasExplicitConnections) return null
+    const indexById = new Map(vm.atomPositions.map((atom, index) => [atom.id, index]))
+    const atoms: ModelAtom[] = vm.atomPositions.map((atom) => ({
+      elem: atom.element,
+      x: atom.x,
+      y: atom.y,
+      z: atom.z,
+      bonds: [],
+      bondOrder: []
+    }))
+    for (const connection of vm.atomConnections) {
+      const fromIndex = indexById.get(connection.from)
+      const toIndex = indexById.get(connection.to)
+      if (fromIndex == null || toIndex == null) continue
+      atoms[fromIndex].bonds.push(toIndex)
+      atoms[fromIndex].bondOrder.push(connection.order)
+      atoms[toIndex].bonds.push(fromIndex)
+      atoms[toIndex].bondOrder.push(connection.order)
+    }
+    return atoms
+  }, [hasExplicitConnections, vm.atomConnections, vm.atomPositions])
+
+  useEffect(() => {
+    if (loading) return
     if (!containerRef.current) return
 
     const viewer = $3Dmol.createViewer(containerRef.current, {
       backgroundColor: '#0b0f17'
     })
-    viewer.addModel(xyz, 'xyz')
-    viewer.setStyle({}, { stick: { radius: 0.16 }, sphere: { scale: 0.29 } })
-    viewer.setClickable({}, true, (atom: any) => {
+    if (modelAtoms) {
+      const model = viewer.addModel()
+      model.addAtoms(modelAtoms)
+    } else {
+      viewer.addModel(xyz, 'xyz')
+    }
+    viewer.setStyle({}, { stick: { radius: 0.06 }, sphere: { scale: 0.15 } })
+    viewer.setClickable({}, true, (atom: ClickableAtom) => {
       const atomIndex = typeof atom?.serial === 'number' ? atom.serial : (atom?.index ?? '?')
       const targets = Array.isArray(atom?.bonds) ? atom.bonds.slice(0, 8).join(', ') : 'None'
       setSelectedAtom({
@@ -79,7 +178,6 @@ export function FilterVisualization(): React.JSX.Element {
       viewer.render()
     })
     viewer.zoomTo()
-    viewer.zoom(1.2, 300)
     viewer.render()
 
     const onResize = (): void => {
@@ -95,7 +193,7 @@ export function FilterVisualization(): React.JSX.Element {
       window.removeEventListener('resize', onResize)
       viewer.clear()
     }
-  }, [xyz])
+  }, [xyz, loading, atomCount, modelAtoms])
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden p-4 md:p-6 lg:p-8">
@@ -103,22 +201,29 @@ export function FilterVisualization(): React.JSX.Element {
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <button
-            onClick={() => navigate(`/filters/${filter.id}`)}
+            onClick={() => navigate(`/filters/${id}`)}
             className="rounded-[6px] p-1.5 transition-colors hover:bg-secondary"
           >
             <ArrowLeft size={16} strokeWidth={1.5} />
           </button>
           <div>
-            <h1 className="text-xl font-semibold">{filter.name} Visualization</h1>
-            <p className="font-mono text-xs text-muted-foreground">Filter {filter.id}</p>
+            <h1 className="text-xl font-semibold">Filter Visualization</h1>
+            <p className="font-mono text-xs text-muted-foreground">Filter {id ?? '-'}</p>
           </div>
         </div>
-        <Button variant="outline" onClick={() => setSeed(Date.now())}>
-          <RefreshCw size={14} strokeWidth={1.5} />
-          Regenerate Test Structure
-        </Button>
       </div>
+      {error ? (
+        <div className="mb-4 rounded-[6px] border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
+      {loading ? (
+        <div className="flex min-h-[240px] items-center justify-center rounded-[8px] border border-border bg-card">
+          <Loader2 size={28} className="animate-spin text-muted-foreground" />
+        </div>
+      ) : null}
 
+      {!loading ? (
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden xl:grid-cols-[minmax(0,1fr)_320px]">
         <section className="flex min-h-0 flex-col gap-4 overflow-hidden">
           <div className="relative min-h-0 flex-1 overflow-hidden rounded-[8px] border border-border bg-black">
@@ -141,8 +246,11 @@ export function FilterVisualization(): React.JSX.Element {
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                This is a generated test structure for performance checks. Click any atom in the 3D view to
-                inspect its element and connectivity.
+                {usingRealStructure
+                  ? hasExplicitConnections
+                    ? 'Structure loaded from backend atoms + explicit connections. Click any atom in the 3D view to inspect its element and connectivity.'
+                    : 'Structure loaded from backend atomPositions. Click any atom in the 3D view to inspect its element and connectivity.'
+                  : 'Backend atomPositions were missing, so a generated fallback structure is shown. Click any atom in the 3D view to inspect it.'}
               </p>
             )}
           </div>
@@ -174,16 +282,34 @@ export function FilterVisualization(): React.JSX.Element {
           <div className="space-y-1 text-sm text-muted-foreground">
             <p>
               Atoms: <span className="font-mono text-foreground">{atomCount}</span>
+              {isDownsampled ? (
+                <span className="ml-2 font-mono text-[11px] text-muted-foreground">
+                  (from {rawAtomCount}, perf mode)
+                </span>
+              ) : null}
             </p>
             <p>
-              Structure: <span className="text-foreground">Randomized test topology</span>
+              Connections:{' '}
+              <span className="font-mono text-foreground">
+                {hasExplicitConnections ? vm.atomConnections.length : 'inferred'}
+              </span>
             </p>
             <p>
-              Purpose: <span className="text-foreground">Renderer stress/perf validation</span>
+              Structure:{' '}
+              <span className="text-foreground">
+                {usingRealStructure ? 'Atom coordinates from API payload' : 'Randomized test topology'}
+              </span>
+            </p>
+            <p>
+              Purpose:{' '}
+              <span className="text-foreground">
+                {usingRealStructure ? 'Real backend filter structure' : 'Renderer stress/perf fallback'}
+              </span>
             </p>
           </div>
         </aside>
       </div>
+      ) : null}
     </div>
   )
 }

@@ -59,6 +59,21 @@ const KNOWN_MOLECULES: Record<string, { name: string; formula: string; color: st
 }
 
 const FALLBACK_COLORS = ['#f472b6', '#fb923c', '#facc15', '#4ade80', '#818cf8', '#e879f9']
+const NON_MOLECULAR_CODES = new Set(['PH', 'TEMP'])
+const CODE_NAME_MAP: Record<string, string> = {
+  'CA-DIS': 'Calcium',
+  'CL-DIS': 'Chloride',
+  'MG-DIS': 'Magnesium',
+  'NA-DIS': 'Sodium',
+  'K-DIS': 'Potassium',
+  'ZN-DIS': 'Zinc',
+  'PB-DIS': 'Lead',
+  'CU-DIS': 'Copper',
+  'NI-DIS': 'Nickel',
+  'MN-DIS': 'Manganese',
+  'FE-DIS': 'Iron',
+  TOLH: 'Toluene'
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
@@ -88,11 +103,13 @@ function drawAtom(ctx: CanvasRenderingContext2D, x: number, y: number, r: number
 
 function drawGenericMolecule(ctx: CanvasRenderingContext2D, node: MoleculeNode): void {
   drawAtom(ctx, node.x, node.y, node.radius, node.molecule.color)
-  ctx.fillStyle = 'rgba(255,255,255,0.85)'
-  ctx.font = `bold ${Math.max(8, node.radius)}px ui-monospace, monospace`
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.fillText(node.molecule.code, node.x, node.y)
+  if (node.molecule.formula.length <= 3 && node.molecule.formula !== 'n/a') {
+    ctx.fillStyle = 'rgba(255,255,255,0.85)'
+    ctx.font = `bold ${Math.max(8, node.radius)}px ui-monospace, monospace`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(node.molecule.formula, node.x, node.y)
+  }
 }
 
 function drawNO3(ctx: CanvasRenderingContext2D, node: MoleculeNode): void {
@@ -158,12 +175,16 @@ export function buildMoleculeDefinitions(info: FilterInfo): MoleculeDefinition[]
   let fallbackIdx = 0
   for (const p of params) {
     const code = p.name.toUpperCase()
+    if (NON_MOLECULAR_CODES.has(code)) continue
     const known = KNOWN_MOLECULES[code]
+    const humanName = CODE_NAME_MAP[code] ?? p.name
+    const symbolFromCode = code.match(/^([A-Z][A-Z]?)/)?.[1] ?? null
+    const inferredFormula = known?.formula ?? (symbolFromCode && symbolFromCode.length <= 2 ? symbolFromCode : 'n/a')
     const normalized = maxParam > 0 ? clamp(p.value / maxParam, 0, 1) : 0
     defs.push({
       code,
-      name: known?.name ?? p.name,
-      formula: known?.formula ?? p.name,
+      name: known?.name ?? humanName,
+      formula: inferredFormula,
       color: known?.color ?? FALLBACK_COLORS[fallbackIdx++ % FALLBACK_COLORS.length],
       concentration: p.value,
       unit: p.unit ?? 'mg/L',
@@ -226,7 +247,7 @@ export class MolecularScene {
         : 90
 
       const filteredCount = molecule.filterable
-        ? Math.max(2, Math.round(baseCount * (1 - this.removalEfficiency)))
+        ? Math.max(0, Math.round(baseCount * (1 - this.removalEfficiency)))
         : Math.round(baseCount * 0.98)
 
       const baseRadius = clamp(3.5 + molecule.radiusScale * 2.6 * poreFactor, 3, 9)

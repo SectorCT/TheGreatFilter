@@ -79,7 +79,8 @@ const normalizeMeasurementListItem = (
     createdAt: typeof record.createdAt === 'string' ? record.createdAt : new Date().toISOString(),
     temperature: isFiniteNumber(record.temperature) ? record.temperature : Number.NaN,
     ph: isFiniteNumber(record.ph) ? record.ph : Number.NaN,
-    parameters: Array.isArray(record.parameters) ? (record.parameters as MeasurementListItem['parameters']) : [],
+    // Backend list items typically provide parameters under `latestSnapshot.parameters` (map), not `parameters` (array).
+    parameters: extractDetailParameters(record),
     sampleLocation:
       typeof record.sampleLocation === 'object' && record.sampleLocation !== null
         ? (record.sampleLocation as Record<string, unknown>)
@@ -180,6 +181,8 @@ export const getMeasurementById = async (measurementId: string): Promise<Measure
       measurementId,
       source: 'manual',
       createdAt: new Date().toISOString(),
+      sampleDate: new Date().toISOString().slice(0, 10),
+      sampleTime: '10:30:00',
       temperature: 22.1,
       ph: 7.3,
       parameters: []

@@ -1,4 +1,4 @@
-import { FlaskConical, Droplets, LayoutDashboard, LogOut, Plus } from 'lucide-react'
+import { FlaskConical, Droplets, LayoutDashboard, LogOut, Plus, FolderKanban } from 'lucide-react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { cn } from '@renderer/lib/utils'
 import { clearAccessToken } from '@renderer/utils/api/authTokenStore'
@@ -6,6 +6,7 @@ import { clearAccessToken } from '@renderer/utils/api/authTokenStore'
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/filters', label: 'All Filters', icon: FlaskConical },
+  { to: '/studies', label: 'Studies', icon: FolderKanban },
   { to: '/measurements', label: 'Measurements', icon: Droplets },
   { to: '/add-measurement', label: 'New Measurement', icon: Plus }
 ]

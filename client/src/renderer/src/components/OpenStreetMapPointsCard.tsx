@@ -12,6 +12,8 @@ import FullscreenLoadingScreen from './FullscreenLoadingScreen'
 
 type OpenStreetMapPointsCardProps = {
   points: GemstatLocation[]
+  selectedLocationId?: string | null
+  onSelectPoint?: (point: GemstatLocation) => void
 }
 
 type RenderPoint = {
@@ -25,6 +27,12 @@ const POINT_ICON = divIcon({
   html: '<div style="width:8px;height:8px;background:#ff5a3c;border:1px solid rgba(0,0,0,0.55);border-radius:999px;"></div>',
   className: 'tgif-point-icon',
   iconSize: point(8, 8, true),
+})
+
+const SELECTED_POINT_ICON = divIcon({
+  html: '<div style="width:12px;height:12px;background:#2563eb;border:2px solid white;box-shadow:0 0 0 2px #1d4ed8;border-radius:999px;"></div>',
+  className: 'tgif-point-icon-selected',
+  iconSize: point(12, 12, true),
 })
 
 const getDefaultCenter = (points: GemstatLocation[]): [number, number] => {
@@ -112,7 +120,9 @@ const getWrappedRenderPoints = (points: GemstatLocation[]): RenderPoint[] => {
 }
 
 export default function OpenStreetMapPointsCard({
-  points
+  points,
+  selectedLocationId = null,
+  onSelectPoint
 }: OpenStreetMapPointsCardProps): React.JSX.Element {
   const center = useMemo(() => getDefaultCenter(points), [points])
   const renderPoints = useMemo(() => getWrappedRenderPoints(points), [points])
@@ -164,7 +174,16 @@ export default function OpenStreetMapPointsCard({
           maxClusterRadius={60}
         >
           {renderPoints.map((p) => (
-            <Marker key={p.key} position={[p.lat, p.lon]} icon={POINT_ICON}>
+            <Marker
+              key={p.key}
+              position={[p.lat, p.lon]}
+              icon={selectedLocationId === p.source.locationId ? SELECTED_POINT_ICON : POINT_ICON}
+              eventHandlers={{
+                click: () => {
+                  onSelectPoint?.(p.source)
+                },
+              }}
+            >
               <Popup>{getPopupText(p.source) || p.source.locationId}</Popup>
             </Marker>
           ))}

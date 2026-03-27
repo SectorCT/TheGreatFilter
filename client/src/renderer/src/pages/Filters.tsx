@@ -1,13 +1,18 @@
 import { ArrowRight, FlaskConical } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
 import { StatusBadge } from '@renderer/components/StatusBadge'
 import { Button } from '@renderer/components/ui/button'
-import { getFilters } from '@renderer/utils/api/endpoints'
-import { type FilterListItem, type FilterListResponse } from '@renderer/utils/api/types'
+import { getFilterStatus, getFilters, getStudies } from '@renderer/utils/api/endpoints'
+import { type FilterListItem, type FilterListResponse, type Study, type StudyListResponse } from '@renderer/utils/api/types'
 
 const resolveFilters = (payload: FilterListResponse): FilterListItem[] => {
+  if (Array.isArray(payload)) return payload
+  return payload.results ?? []
+}
+
+const resolveStudies = (payload: StudyListResponse): Study[] => {
   if (Array.isArray(payload)) return payload
   return payload.results ?? []
 }
@@ -17,6 +22,11 @@ export function Filters(): React.JSX.Element {
   const [items, setItems] = useState<FilterListItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const itemsRef = useRef(items)
+
+  const [studies, setStudies] = useState<Study[]>([])
+  const [isLoadingStudies, setIsLoadingStudies] = useState(true)
+  const [studyFilterId, setStudyFilterId] = useState<string>('') // '' means "All"
 
   useEffect(() => {
     let isMounted = true
@@ -41,7 +51,89 @@ export function Filters(): React.JSX.Element {
     }
   }, [])
 
+  // Keep statuses fresh while this page is open.
+  useEffect(() => {
+    itemsRef.current = items
+  }, [items])
+
+  useEffect(() => {
+    let cancelled = false
+    let inFlight = false
+    const POLL_MS = 5000
+
+    const poll = async (): Promise<void> => {
+      if (cancelled) return
+      if (inFlight) return
+
+      const current = itemsRef.current
+      const candidateIds = current
+        .filter((it) => it.status === 'Pending' || it.status === 'Generating')
+        .map((it) => it.filterId)
+
+      if (candidateIds.length === 0) return
+
+      inFlight = true
+      try {
+        const results = await Promise.all(candidateIds.map((filterId) => getFilterStatus(filterId)))
+        const nextById = new Map(results.map((r) => [r.filterId, r.status] as const))
+        setItems((prev) =>
+          prev.map((item) => {
+            const nextStatus = nextById.get(item.filterId)
+            return nextStatus ? { ...item, status: nextStatus } : item
+          })
+        )
+      } catch {
+        // Silent: polling failures shouldn't break the entire filters page.
+      } finally {
+        inFlight = false
+      }
+    }
+
+    const interval = window.setInterval(() => {
+      void poll()
+    }, POLL_MS)
+
+    // Do one immediate poll so the UI updates quickly after landing.
+    void poll()
+
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [])
+
+  useEffect(() => {
+    let isMounted = true
+    const loadStudies = async (): Promise<void> => {
+      setIsLoadingStudies(true)
+      try {
+        const response = await getStudies()
+        if (!isMounted) return
+        setStudies(resolveStudies(response))
+      } catch {
+        if (!isMounted) return
+        setStudies([])
+      } finally {
+        if (isMounted) setIsLoadingStudies(false)
+      }
+    }
+    void loadStudies()
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const studyNameById = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const study of studies) map.set(study.id, study.name)
+    return map
+  }, [studies])
+
   const total = useMemo(() => items.length, [items])
+  const filteredItems = useMemo(() => {
+    if (!studyFilterId) return items
+    return items.filter((item) => item.studyId === studyFilterId)
+  }, [items, studyFilterId])
 
   return (
     <div className="p-4 md:p-6 lg:p-8">
@@ -51,19 +143,36 @@ export function Filters(): React.JSX.Element {
           <h1 className="text-xl font-semibold">All Filters</h1>
           <p className="text-sm text-muted-foreground">{total} generated filters</p>
         </div>
-        <Button onClick={() => navigate('/filters/new')}>
-          <FlaskConical size={16} strokeWidth={1.5} />
-          New Filter
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={studyFilterId}
+            onChange={(e) => setStudyFilterId(e.target.value)}
+            className="h-9 w-full rounded-[6px] border border-input bg-surface-elevated px-3 text-sm md:w-[240px]"
+            disabled={isLoadingStudies}
+            title="Filter by study"
+          >
+            <option value="">All Studies</option>
+            {studies.map((study) => (
+              <option key={study.id} value={study.id}>
+                {study.name}
+              </option>
+            ))}
+          </select>
+          <Button onClick={() => navigate('/filters/new')} className="shrink-0">
+            <FlaskConical size={16} strokeWidth={1.5} />
+            New Filter
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-[6px] border border-border bg-card">
         <div className="overflow-x-auto">
-          <table className="min-w-[780px] w-full text-sm">
+          <table className="min-w-[860px] w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-table-header text-left">
                 <th className="px-4 py-2.5 font-medium text-muted-foreground">ID</th>
                 <th className="px-4 py-2.5 font-medium text-muted-foreground">Filter Name</th>
+                <th className="px-4 py-2.5 font-medium text-muted-foreground">Study</th>
                 <th className="px-4 py-2.5 font-medium text-muted-foreground">Source</th>
                 <th className="px-4 py-2.5 font-medium text-muted-foreground">Parameters</th>
                 <th className="px-4 py-2.5 font-medium text-muted-foreground">Date</th>
@@ -74,26 +183,26 @@ export function Filters(): React.JSX.Element {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
                     Loading filters...
                   </td>
                 </tr>
               ) : null}
               {!isLoading && error ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-sm text-destructive">
+                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-destructive">
                     {error}
                   </td>
                 </tr>
               ) : null}
-              {!isLoading && !error && items.length === 0 ? (
+              {!isLoading && !error && filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-sm text-muted-foreground">
-                    No filters generated yet.
+                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                    {studyFilterId ? 'No filters for the selected study.' : 'No filters generated yet.'}
                   </td>
                 </tr>
               ) : null}
-              {!isLoading && !error && items.map((item) => (
+              {!isLoading && !error && filteredItems.map((item) => (
                 <tr
                   key={item.filterId}
                   onClick={() => navigate(`/filters/${item.filterId}`)}
@@ -103,6 +212,9 @@ export function Filters(): React.JSX.Element {
                 >
                   <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{item.filterId}</td>
                   <td className="px-4 py-3 font-medium">Filter {item.filterId.slice(0, 8)}</td>
+                  <td className="px-4 py-3 font-mono text-xs">
+                    {studyNameById.get(item.studyId) ?? item.studyId.slice(0, 8)}
+                  </td>
                   <td className="px-4 py-3">-</td>
                   <td className="px-4 py-3 font-mono text-xs">-</td>
                   <td className="px-4 py-3 font-mono text-xs text-muted-foreground">

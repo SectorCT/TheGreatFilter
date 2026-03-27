@@ -17,9 +17,9 @@ import {
 } from 'recharts'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
 import { Button } from '@renderer/components/ui/button'
-import { filters } from '@renderer/data/mockData'
 import { getFilterDetails } from '@renderer/utils/api/endpoints'
 import type { FilterInfo } from '@renderer/utils/api/types'
+import { buildFilterInfoViewModel } from '@renderer/utils/filterInfoViewModel'
 import {
   buildMoleculeDefinitions,
   MolecularScene,
@@ -40,25 +40,32 @@ function formatValue(value?: number): string {
 export function FilterAnalysis(): React.JSX.Element {
   const navigate = useNavigate()
   const { id } = useParams()
-  const filter = useMemo(() => filters.find((item) => item.id === id) ?? filters[0], [id])
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const sceneRef = useRef<MolecularScene | null>(null)
   const rafRef = useRef<number>(0)
 
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(Boolean(id))
   const [filterInfo, setFilterInfo] = useState<FilterInfo | null>(null)
   const [hover, setHover] = useState<HoverState>(null)
+  const [error, setError] = useState<string | null>(id ? null : 'Missing filter ID.')
 
   useEffect(() => {
     let cancelled = false
 
-    getFilterDetails(id ?? '')
+    if (!id) {
+      return
+    }
+
+    getFilterDetails(id)
       .then((resp) => {
         if (!cancelled) setFilterInfo(resp.filterInfo)
       })
-      .catch(() => {
-        if (!cancelled) setFilterInfo(null)
+      .catch((fetchError) => {
+        if (!cancelled) {
+          setFilterInfo(null)
+          setError(fetchError instanceof Error ? fetchError.message : 'Failed to load filter analysis data.')
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -70,31 +77,25 @@ export function FilterAnalysis(): React.JSX.Element {
   }, [id])
 
   const moleculeDefs = useMemo(() => buildMoleculeDefinitions(filterInfo ?? {}), [filterInfo])
+  const vm = useMemo(() => buildFilterInfoViewModel(filterInfo), [filterInfo])
   const filterStructure = filterInfo?.filterStructure
   const experimentPayload = filterInfo?.experimentPayload
   const resultPayload = filterInfo?.resultPayload
   const removalEfficiency = resultPayload?.removalEfficiency ?? 90
 
   const radarData = useMemo(() => {
-    const defs = moleculeDefs.filter((m) => m.filterable)
-    const peak = defs.reduce((acc, item) => Math.max(acc, item.concentration), 0)
-    const baseline = peak > 0 ? peak : 1
-    return defs.map((item) => ({
-      parameter: item.code,
-      value: Math.round((item.concentration / baseline) * 100)
-    }))
-  }, [moleculeDefs])
+    return vm.parameterRadarData
+  }, [vm.parameterRadarData])
 
   const removalData = useMemo(() => {
     const eff = Math.max(0, Math.min(100, removalEfficiency)) / 100
-    return moleculeDefs
-      .filter((m) => m.filterable)
+    return vm.params
       .map((item) => {
-        const removed = item.concentration * eff
-        const remaining = Math.max(0, item.concentration - removed)
+        const removed = item.value * eff
+        const remaining = Math.max(0, item.value - removed)
         return {
           name: item.code,
-          concentration: Number(item.concentration.toFixed(3)),
+          concentration: Number(item.value.toFixed(3)),
           removed: Number(removed.toFixed(3)),
           remaining: Number(remaining.toFixed(3)),
           unit: item.unit
@@ -102,7 +103,18 @@ export function FilterAnalysis(): React.JSX.Element {
       })
       .sort((a, b) => b.concentration - a.concentration)
       .slice(0, 8)
-  }, [moleculeDefs, removalEfficiency])
+  }, [vm.params, removalEfficiency])
+
+  useEffect(() => {
+    if (!filterInfo) return
+    const genericDefs = moleculeDefs.filter((m) => m.formula === 'n/a').map((m) => m.code)
+    console.debug('[FilterAnalysis] molecule mapping', {
+      filterId: id,
+      totalParams: vm.params.length,
+      molecularDefs: moleculeDefs.length,
+      genericDefs
+    })
+  }, [filterInfo, id, moleculeDefs, vm.params.length])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -183,21 +195,26 @@ export function FilterAnalysis(): React.JSX.Element {
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <button
-            onClick={() => navigate(`/filters/${filter.id}`)}
+            onClick={() => navigate(`/filters/${id}`)}
             className="rounded-[6px] p-1.5 transition-colors hover:bg-secondary"
           >
             <ArrowLeft size={16} strokeWidth={1.5} />
           </button>
           <div>
-            <h1 className="text-xl font-semibold">{filter.name} Molecular Analysis</h1>
-            <p className="font-mono text-xs text-muted-foreground">Filter {filter.id}</p>
+            <h1 className="text-xl font-semibold">Molecular Analysis</h1>
+            <p className="font-mono text-xs text-muted-foreground">Filter {id ?? '-'}</p>
           </div>
         </div>
-        <Button variant="outline" onClick={() => navigate(`/filters/${filter.id}/simulate`)}>
+        <Button variant="outline" onClick={() => navigate(`/filters/${id}/simulate`)}>
           <Microscope size={14} strokeWidth={1.5} />
           Compare With Simulation
         </Button>
       </div>
+      {error ? (
+        <div className="mb-4 rounded-[6px] border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {error}
+        </div>
+      ) : null}
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden xl:grid-cols-[minmax(0,1fr)_340px]">
         <section className="flex min-h-0 flex-col gap-3 overflow-hidden">
@@ -242,7 +259,7 @@ export function FilterAnalysis(): React.JSX.Element {
                 <PolarRadiusAxis domain={[0, 100]} tickCount={6} tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
                 <Radar dataKey="value" stroke="#22c55e" fill="#22c55e" fillOpacity={0.28} />
                 <Tooltip
-                  formatter={(value: number) => [`${value}%`, 'Normalized']}
+                  formatter={(value) => [`${String(value ?? '-')}%`, 'Normalized']}
                   contentStyle={{ borderRadius: 8, borderColor: 'hsl(var(--border))', background: 'hsl(var(--card))' }}
                 />
               </RadarChart>
@@ -259,7 +276,7 @@ export function FilterAnalysis(): React.JSX.Element {
                 <XAxis type="number" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
                 <YAxis dataKey="name" type="category" width={42} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
                 <Tooltip
-                  formatter={(value: number, key) => [`${value}`, key === 'removed' ? 'Removed' : 'Remaining']}
+                  formatter={(value, key) => [`${String(value ?? '-')}`, key === 'removed' ? 'Removed' : 'Remaining']}
                   labelFormatter={(label) => `${label}`}
                   contentStyle={{ borderRadius: 8, borderColor: 'hsl(var(--border))', background: 'hsl(var(--card))' }}
                 />
@@ -309,11 +326,11 @@ export function FilterAnalysis(): React.JSX.Element {
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Target Pollutant</span>
-              <span className="font-mono text-xs">{resultPayload?.pollutant ?? 'n/a'}</span>
+              <span className="font-mono text-xs">{vm.metrics.pollutant}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Removal Efficiency</span>
-              <span className="font-mono text-xs">{formatValue(resultPayload?.removalEfficiency)}%</span>
+              <span className="font-mono text-xs">{formatValue(vm.metrics.removalEfficiency ?? undefined)}%</span>
             </div>
           </div>
 

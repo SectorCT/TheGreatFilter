@@ -81,17 +81,13 @@ export function Measurements(): React.JSX.Element {
 
       <div className="rounded-[6px] border border-border bg-card">
         <div className="overflow-x-auto">
-          <table className="min-w-[980px] w-full text-sm">
+          <table className="min-w-[780px] w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-table-header text-left">
                 <th className="px-4 py-2.5 font-medium text-muted-foreground">Label</th>
                 <th className="px-4 py-2.5 font-medium text-muted-foreground">Source</th>
                 <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">pH</th>
                 <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Temp</th>
-                <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">DO</th>
-                <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">
-                  Conductivity
-                </th>
                 <th className="px-4 py-2.5 text-right font-medium text-muted-foreground">Params</th>
                 <th className="px-4 py-2.5 font-medium text-muted-foreground">Date</th>
                 <th className="px-4 py-2.5 font-medium text-muted-foreground" />
@@ -100,7 +96,7 @@ export function Measurements(): React.JSX.Element {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-10 text-center text-sm text-muted-foreground">
                     Loading measurements...
                   </td>
                 </tr>
@@ -108,7 +104,7 @@ export function Measurements(): React.JSX.Element {
 
               {!isLoading && error ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-destructive">
+                  <td colSpan={7} className="px-4 py-10 text-center text-sm text-destructive">
                     {error}
                   </td>
                 </tr>
@@ -116,7 +112,7 @@ export function Measurements(): React.JSX.Element {
 
               {!isLoading && !error && items.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-10 text-center text-sm text-muted-foreground">
                     No measurements yet. Add one to get started.
                   </td>
                 </tr>
@@ -136,8 +132,6 @@ export function Measurements(): React.JSX.Element {
                   <td className="px-4 py-3 text-right font-mono text-xs">
                     {formatFixed(item.temperature)}
                   </td>
-                  <td className="px-4 py-3 text-right font-mono text-xs">-</td>
-                  <td className="px-4 py-3 text-right font-mono text-xs">-</td>
                   <td className="px-4 py-3 text-right font-mono text-xs">
                     {item.parameters?.length ?? 0}
                   </td>

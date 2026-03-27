@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Any, Optional
 
 
 class MeasurementParam(BaseModel):
@@ -22,6 +22,7 @@ class FilterStatus(BaseModel):
 
 
 class AtomPosition(BaseModel):
+    id: int
     x: float
     y: float
     z: float
@@ -37,7 +38,11 @@ class FilterInfo(BaseModel):
     removalEfficiency: float
     pollutant: str
     pollutantSymbol: str
+    method: str = "hf"
     atomPositions: list[AtomPosition]
+    # Each connection: {"from": int, "to": int, "order": int}
+    # "from" is a reserved keyword so stored as plain dicts, not a nested model.
+    connections: list[dict[str, Any]] = []
 
 
 class FilterDetails(BaseModel):

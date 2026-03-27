@@ -114,6 +114,7 @@ def run_filter_generation(generated_filter) -> dict:
             "latticeSpacing": info.get("latticeSpacing"),
             "materialType": info.get("materialType"),
             "atomPositions": info.get("atomPositions", []),
+            "connections": info.get("connections", []),
         },
         "experiment_payload": {
             "measurement_id": str(generated_filter.measurement_id),

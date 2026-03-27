@@ -30,8 +30,8 @@ export function AddMeasurement(): React.JSX.Element {
   const [selectedMethod, setSelectedMethod] = useState<Method | null>(null)
 
   return (
-    <div className="p-4 md:p-6 lg:p-8">
-      <div className="mb-6 flex items-center gap-3">
+    <div className="flex h-full min-h-0 flex-col p-4 md:p-6 lg:p-8">
+      <div className="mb-6 flex shrink-0 items-center gap-3">
         <button
           onClick={() => (selectedMethod ? setSelectedMethod(null) : navigate('/dashboard'))}
           className="rounded-[6px] p-1.5 transition-colors hover:bg-secondary"
@@ -44,39 +44,46 @@ export function AddMeasurement(): React.JSX.Element {
         </div>
       </div>
 
-      {!selectedMethod ? (
-        <div className="grid min-h-[calc(100vh-220px)] w-full grid-cols-1 auto-rows-fr gap-3 sm:grid-cols-2">
-          {methods.map((method) => {
-            const Icon = method.icon
-            return (
-              <button
-                key={method.key}
-                onClick={() => setSelectedMethod(method.key)}
-                className="flex h-full flex-col items-center justify-center rounded-[6px] border border-border bg-card p-5 text-center transition-colors hover:bg-secondary"
-              >
-                <Icon size={18} strokeWidth={1.5} className="mb-2 text-muted-foreground" />
-                <p className="font-medium">{method.label}</p>
-                <p className="text-sm text-muted-foreground">{method.description}</p>
-              </button>
-            )
-          })}
-        </div>
-      ) : null}
+      <div className="min-h-0 flex-1">
+        {!selectedMethod ? (
+          <div className="mx-auto w-full max-w-[900px]">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {methods.map((method) => {
+              const Icon = method.icon
+              return (
+                <button
+                  key={method.key}
+                  onClick={() => setSelectedMethod(method.key)}
+                  className="flex min-h-[150px] flex-col items-start justify-start gap-2 rounded-[6px] border border-border bg-card p-5 text-left transition-colors hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-[8px] border border-border bg-muted/30">
+                      <Icon size={18} strokeWidth={1.5} className="text-muted-foreground" />
+                    </span>
+                    <p className="font-medium">{method.label}</p>
+                  </div>
+                  <p className="text-sm text-muted-foreground break-words">{method.description}</p>
+                  <div className="mt-auto pt-2">
+                    <p className="text-xs text-muted-foreground">Continue</p>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+          </div>
+        ) : null}
 
-      {selectedMethod === 'manual' ? (
-        <ManualEntryPanel />
-      ) : null}
+        {selectedMethod === 'manual' ? <ManualEntryPanel /> : null}
 
-      {selectedMethod === 'usb' ? (
-        <UsbEntryPanel onBack={() => setSelectedMethod(null)} />
-      ) : null}
+        {selectedMethod === 'usb' ? <UsbEntryPanel onBack={() => setSelectedMethod(null)} /> : null}
 
-      {selectedMethod === 'map' ? (
-        <GemstatMapPanel />
-      ) : null}
-      {selectedMethod === 'csv' ? (
-        <CsvImportPanel />
-      ) : null}
+        {selectedMethod === 'map' ? (
+          <div className="h-full min-h-0">
+            <GemstatMapPanel />
+          </div>
+        ) : null}
+        {selectedMethod === 'csv' ? <CsvImportPanel /> : null}
+      </div>
     </div>
   )
 }

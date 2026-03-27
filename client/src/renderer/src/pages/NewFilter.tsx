@@ -44,11 +44,16 @@ export function NewFilter(): React.JSX.Element {
   const [selectedTargetCodes, setSelectedTargetCodes] = useState<string[]>([])
   const [codeToAdd, setCodeToAdd] = useState('')
   const [measurementParameters, setMeasurementParameters] = useState<MeasurementParameter[]>([])
-  const [selectedMeasurementDetail, setSelectedMeasurementDetail] = useState<Measurement | null>(null)
+  const [selectedMeasurementDetail, setSelectedMeasurementDetail] = useState<Measurement | null>(
+    null
+  )
   const [isLoadingMeasurements, setIsLoadingMeasurements] = useState(true)
   const [isLoadingStudies, setIsLoadingStudies] = useState(true)
+  const [isCreatingStudyInline, setIsCreatingStudyInline] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [inlineStudyName, setInlineStudyName] = useState('')
+  const [inlineStudyDescription, setInlineStudyDescription] = useState('')
 
   useEffect(() => {
     let isMounted = true
@@ -150,7 +155,9 @@ export function NewFilter(): React.JSX.Element {
         const derived = Array.from(
           new Map(
             (detail.parameters ?? [])
-              .filter((parameter) => !['TEMP', 'PH'].includes(parameter.parameterCode.toUpperCase()))
+              .filter(
+                (parameter) => !['TEMP', 'PH'].includes(parameter.parameterCode.toUpperCase())
+              )
               .map((parameter) => [parameter.parameterCode, parameter] as const)
           ).values()
         )
@@ -195,7 +202,9 @@ export function NewFilter(): React.JSX.Element {
     }))
   }, [measurementParameters, selectedTargetCodes])
 
-  const buildMeasurementPayload = (detail: Measurement) => ({
+  const buildMeasurementPayload = (
+    detail: Measurement
+  ): { temperature: number; ph: number; parameters: MeasurementParameter[] } => ({
     temperature:
       typeof detail.temperature === 'number' && Number.isFinite(detail.temperature)
         ? detail.temperature
@@ -210,7 +219,10 @@ export function NewFilter(): React.JSX.Element {
   )
 
   const selectedTargetParameters = useMemo(
-    () => measurementParameters.filter((parameter) => selectedTargetCodes.includes(parameter.parameterCode)),
+    () =>
+      measurementParameters.filter((parameter) =>
+        selectedTargetCodes.includes(parameter.parameterCode)
+      ),
     [measurementParameters, selectedTargetCodes]
   )
 
@@ -229,6 +241,18 @@ export function NewFilter(): React.JSX.Element {
       targetParameterCodes: selectedTargetParameterCodes,
       coreInputs: {}
     }
+    console.log(
+      '[New Filter] study selection:',
+      JSON.stringify(
+        {
+          selectedStudyId,
+          selectedStudyName: selectedStudy?.name ?? null,
+          availableStudyCount: studies.length
+        },
+        null,
+        2
+      )
+    )
     console.log('[New Filter] JSON payload:', JSON.stringify(payload, null, 2))
     setIsSubmitting(true)
     setError(null)
@@ -247,6 +271,40 @@ export function NewFilter(): React.JSX.Element {
       toast.error('Failed to trigger filter generation.')
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const handleCreateStudyInline = async (): Promise<void> => {
+    const trimmedName = inlineStudyName.trim()
+    if (!trimmedName) {
+      toast.error('Study name is required.')
+      return
+    }
+    setIsCreatingStudyInline(true)
+    setError(null)
+    try {
+      const created = await createStudy({
+        name: trimmedName,
+        description: inlineStudyDescription.trim() || undefined
+      })
+      setStudies((prev) => {
+        if (prev.some((study) => study.id === created.id)) return prev
+        return [created, ...prev]
+      })
+      setSelectedStudyId(created.id)
+      setInlineStudyName('')
+      setInlineStudyDescription('')
+      console.log(
+        '[New Filter] inline study created:',
+        JSON.stringify({ studyId: created.id, studyName: created.name }, null, 2)
+      )
+      toast.success('Study created and selected.')
+    } catch (createError) {
+      const message = createError instanceof Error ? createError.message : 'Failed to create study.'
+      setError(message)
+      toast.error('Failed to create study.')
+    } finally {
+      setIsCreatingStudyInline(false)
     }
   }
 
@@ -272,8 +330,12 @@ export function NewFilter(): React.JSX.Element {
         {isLoadingMeasurements ? (
           <p className="text-sm text-muted-foreground">Loading your measurements...</p>
         ) : null}
-        {isLoadingStudies ? <p className="text-sm text-muted-foreground">Loading your studies...</p> : null}
-        {!isLoadingMeasurements && error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {isLoadingStudies ? (
+          <p className="text-sm text-muted-foreground">Loading your studies...</p>
+        ) : null}
+        {!isLoadingMeasurements && error ? (
+          <p className="text-sm text-destructive">{error}</p>
+        ) : null}
 
         {!isLoadingMeasurements && !error ? (
           <div className="space-y-5">
@@ -292,6 +354,30 @@ export function NewFilter(): React.JSX.Element {
                   </option>
                 ))}
               </select>
+              <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                <input
+                  type="text"
+                  value={inlineStudyName}
+                  onChange={(event) => setInlineStudyName(event.target.value)}
+                  placeholder="New study name"
+                  className="h-9 w-full rounded-[6px] border border-input bg-surface-elevated px-3 text-sm"
+                />
+                <input
+                  type="text"
+                  value={inlineStudyDescription}
+                  onChange={(event) => setInlineStudyDescription(event.target.value)}
+                  placeholder="Description (optional)"
+                  className="h-9 w-full rounded-[6px] border border-input bg-surface-elevated px-3 text-sm"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleCreateStudyInline()}
+                  disabled={isCreatingStudyInline}
+                >
+                  {isCreatingStudyInline ? 'Creating...' : 'Create Study'}
+                </Button>
+              </div>
             </div>
             <div>
               <label className="scientific-label mb-1 block">Water Measurement</label>
@@ -300,7 +386,9 @@ export function NewFilter(): React.JSX.Element {
                 onChange={(e) => setSelectedMeasurementId(e.target.value)}
                 className="h-9 w-full rounded-[6px] border border-input bg-surface-elevated px-3 text-sm"
               >
-                {measurements.length === 0 ? <option value="">No measurements available</option> : null}
+                {measurements.length === 0 ? (
+                  <option value="">No measurements available</option>
+                ) : null}
                 {measurements.map((measurement) => (
                   <option key={measurement.measurementId} value={measurement.measurementId}>
                     {measurement.name ?? 'Untitled measurement'}
@@ -342,6 +430,22 @@ export function NewFilter(): React.JSX.Element {
                   disabled={selectedTargetCodes.length === 0}
                 >
                   Clear
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    setSelectedTargetCodes(
+                      measurementParameters.map((parameter) => parameter.parameterCode)
+                    )
+                  }
+                  disabled={
+                    measurementParameters.length === 0 ||
+                    selectedTargetCodes.length === measurementParameters.length
+                  }
+                  title="Select every impurity option"
+                >
+                  All
                 </Button>
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
