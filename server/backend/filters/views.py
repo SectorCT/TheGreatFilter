@@ -23,7 +23,18 @@ class GeneratedFilterListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return GeneratedFilter.objects.filter(owner=self.request.user).select_related("measurement")
+        return (
+            GeneratedFilter.objects.filter(owner=self.request.user)
+            .select_related("measurement", "study")
+            .defer(
+                "filter_structure",
+                "experiment_payload",
+                "result_payload",
+                "summary_metrics",
+                "export_payload",
+                "error_message",
+            )
+        )
 
 
 class GenerateFilterView(APIView):
@@ -68,7 +79,18 @@ class GeneratedFilterStatusView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, filter_id):
-        generated_filter = get_object_or_404(GeneratedFilter, id=filter_id, owner=request.user)
+        generated_filter = get_object_or_404(
+            GeneratedFilter.objects.defer(
+                "filter_structure",
+                "experiment_payload",
+                "result_payload",
+                "summary_metrics",
+                "export_payload",
+                "error_message",
+            ),
+            id=filter_id,
+            owner=request.user,
+        )
         serializer = GeneratedFilterStatusSerializer(generated_filter)
         return Response(serializer.data)
 
@@ -77,7 +99,11 @@ class GeneratedFilterDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, filter_id):
-        generated_filter = get_object_or_404(GeneratedFilter, id=filter_id, owner=request.user)
+        generated_filter = get_object_or_404(
+            GeneratedFilter.objects.select_related("measurement", "study"),
+            id=filter_id,
+            owner=request.user,
+        )
         serializer = GeneratedFilterDetailSerializer(generated_filter)
         return Response(serializer.data)
 

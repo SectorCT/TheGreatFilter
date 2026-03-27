@@ -3,7 +3,7 @@ from collections import OrderedDict
 
 from rest_framework import serializers
 
-from .models import WaterMeasurement
+from .models import Station, WaterMeasurement
 
 
 def normalize_parameters_list(parameters):
@@ -16,7 +16,6 @@ def normalize_parameters_list(parameters):
             raise serializers.ValidationError({"parameters": f"value is required for parameter {code}."})
 
         normalized[code] = {
-            "file": item.get("file") or None,
             "parameterCode": code,
             "parameterName": item.get("parameterName") or None,
             "unit": item.get("unit") or None,
@@ -31,18 +30,53 @@ def parameters_dict_to_list(parameters_data):
     return list(parameters_data.values())
 
 
+def build_filtering_for_list(parameters_data):
+    filtering_for = []
+    for parameter in parameters_dict_to_list(parameters_data):
+        code = (parameter.get("parameterCode") or "").strip()
+        if not code or code.upper() in {"TEMP", "PH"}:
+            continue
+        filtering_for.append(
+            {
+                "parameterCode": code,
+                "parameterName": parameter.get("parameterName") or None,
+                "unit": parameter.get("unit") or None,
+            }
+        )
+    return filtering_for
+
+
 class MeasurementParameterSerializer(serializers.Serializer):
-    file = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     parameterCode = serializers.CharField()
     parameterName = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     unit = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     value = serializers.FloatField()
 
 
+class StationSummarySerializer(serializers.ModelSerializer):
+    stationId = serializers.CharField(source="external_station_id", read_only=True)
+
+    class Meta:
+        model = Station
+        fields = [
+            "stationId",
+            "name",
+            "country",
+            "water_type",
+            "water_body_name",
+            "main_basin",
+            "latitude",
+            "longitude",
+        ]
+
+
 class WaterMeasurementListSerializer(serializers.ModelSerializer):
     measurementId = serializers.UUIDField(source="id", read_only=True)
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
-    sampleLocation = serializers.JSONField(source="sample_location", read_only=True)
+    stationId = serializers.CharField(source="station.external_station_id", read_only=True)
+    parameterCount = serializers.IntegerField(source="parameter_count", read_only=True)
+    parameters = serializers.SerializerMethodField()
+    filteringFor = serializers.SerializerMethodField()
 
     class Meta:
         model = WaterMeasurement
@@ -53,13 +87,25 @@ class WaterMeasurementListSerializer(serializers.ModelSerializer):
             "createdAt",
             "temperature",
             "ph",
-            "sampleLocation",
+            "stationId",
+            "parameterCount",
+            "parameters",
+            "filteringFor",
         ]
+
+    def get_parameters(self, obj):
+        return parameters_dict_to_list(obj.pollutants_data)
+
+    def get_filteringFor(self, obj):
+        return build_filtering_for_list(obj.pollutants_data)
 
 
 class WaterMeasurementOptionSerializer(serializers.ModelSerializer):
     measurementId = serializers.UUIDField(source="id", read_only=True)
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    stationId = serializers.CharField(source="station.external_station_id", read_only=True)
+    parameterCount = serializers.IntegerField(source="parameter_count", read_only=True)
+    filteringFor = serializers.SerializerMethodField()
 
     class Meta:
         model = WaterMeasurement
@@ -70,14 +116,25 @@ class WaterMeasurementOptionSerializer(serializers.ModelSerializer):
             "createdAt",
             "temperature",
             "ph",
+            "stationId",
+            "parameterCount",
+            "filteringFor",
         ]
+
+    def get_filteringFor(self, obj):
+        return build_filtering_for_list(obj.pollutants_data)
 
 
 class WaterMeasurementDetailSerializer(serializers.ModelSerializer):
     measurementId = serializers.UUIDField(source="id", read_only=True)
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
     parameters = serializers.SerializerMethodField()
-    sampleLocation = serializers.JSONField(source="sample_location", read_only=True)
+    sampleDate = serializers.DateField(source="sample_date", read_only=True)
+    sampleTime = serializers.TimeField(source="sample_time", read_only=True)
+    stationId = serializers.CharField(source="station.external_station_id", read_only=True)
+    station = StationSummarySerializer(read_only=True)
+    sampleLocation = serializers.SerializerMethodField()
+    filteringFor = serializers.SerializerMethodField()
 
     class Meta:
         model = WaterMeasurement
@@ -88,17 +145,31 @@ class WaterMeasurementDetailSerializer(serializers.ModelSerializer):
             "createdAt",
             "temperature",
             "ph",
+            "depth",
+            "sampleDate",
+            "sampleTime",
+            "stationId",
+            "station",
             "parameters",
+            "filteringFor",
             "sampleLocation",
         ]
 
     def get_parameters(self, obj):
-        return parameters_dict_to_list(obj.parameters_data)
+        return parameters_dict_to_list(obj.pollutants_data)
+
+    def get_sampleLocation(self, obj):
+        return obj.station.location_payload if obj.station_id else None
+
+    def get_filteringFor(self, obj):
+        return build_filtering_for_list(obj.pollutants_data)
 
 
 class WaterMeasurementCreateSerializer(serializers.ModelSerializer):
     parameters = MeasurementParameterSerializer(many=True, required=False, default=list)
-    sampleLocation = serializers.JSONField(source="sample_location", required=False)
+    sampleDate = serializers.DateField(source="sample_date", required=False, allow_null=True)
+    sampleTime = serializers.TimeField(source="sample_time", required=False, allow_null=True)
+    depth = serializers.FloatField(required=False, allow_null=True)
 
     class Meta:
         model = WaterMeasurement
@@ -108,8 +179,9 @@ class WaterMeasurementCreateSerializer(serializers.ModelSerializer):
             "temperature",
             "ph",
             "parameters",
-            "sampleLocation",
-            "raw_import_data",
+            "sampleDate",
+            "sampleTime",
+            "depth",
         ]
 
     def validate(self, attrs):
@@ -123,62 +195,46 @@ class WaterMeasurementCreateSerializer(serializers.ModelSerializer):
         parameters = validated_data.pop("parameters", [])
         validated_data["owner"] = self.context["request"].user
         validated_data["name"] = validated_data.get("name") or f"Measurement {validated_data['source']}"
-        validated_data["parameters_data"] = normalize_parameters_list(parameters)
+        validated_data["pollutants_data"] = normalize_parameters_list(parameters)
         return WaterMeasurement.objects.create(**validated_data)
 
 
-class WaterMeasurementMapSerializer(serializers.ModelSerializer):
-    measurementId = serializers.UUIDField(source="id", read_only=True)
-    latitude = serializers.SerializerMethodField()
-    longitude = serializers.SerializerMethodField()
-    parameterCount = serializers.IntegerField(source="parameter_count", read_only=True)
-    sampleLocation = serializers.JSONField(source="sample_location", read_only=True)
-    sampleDate = serializers.DateField(source="sample_date", read_only=True)
-    sampleTime = serializers.TimeField(source="sample_time", read_only=True)
-    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+class StationMapSerializer(serializers.ModelSerializer):
+    stationId = serializers.CharField(source="external_station_id", read_only=True)
+    locationId = serializers.CharField(source="external_station_id", read_only=True)
+    source = serializers.CharField(source="source_dataset", read_only=True)
+    measurementCount = serializers.IntegerField(source="measurement_count", read_only=True)
+    latestMeasurementId = serializers.UUIDField(source="latest_measurement_id", read_only=True, allow_null=True)
+    latestSampleDate = serializers.DateField(source="latest_sample_date", read_only=True, allow_null=True)
+    latestSampleTime = serializers.TimeField(source="latest_sample_time", read_only=True, allow_null=True)
+    sampleLocation = serializers.SerializerMethodField()
 
     class Meta:
-        model = WaterMeasurement
+        model = Station
         fields = [
-            "measurementId",
+            "stationId",
+            "locationId",
             "name",
             "source",
-            "temperature",
-            "ph",
             "latitude",
             "longitude",
-            "parameterCount",
-            "sampleDate",
-            "sampleTime",
+            "measurementCount",
+            "latestMeasurementId",
+            "latestSampleDate",
+            "latestSampleTime",
             "sampleLocation",
-            "createdAt",
         ]
 
-    def get_latitude(self, obj):
-        return obj.sample_location.get("latitude")
-
-    def get_longitude(self, obj):
-        return obj.sample_location.get("longitude")
+    def get_sampleLocation(self, obj):
+        return obj.location_payload
 
 
-class WaterMeasurementLocationSerializer(serializers.Serializer):
-    locationId = serializers.CharField()
-    name = serializers.CharField(allow_null=True)
-    source = serializers.CharField()
-    latitude = serializers.FloatField()
-    longitude = serializers.FloatField()
-    measurementCount = serializers.IntegerField()
-    latestMeasurementId = serializers.UUIDField(allow_null=True)
-    latestSampleDate = serializers.DateField(allow_null=True)
-    latestSampleTime = serializers.TimeField(allow_null=True)
-    sampleLocation = serializers.JSONField()
-
-
-class WaterMeasurementLocationMeasurementSerializer(serializers.ModelSerializer):
+class StationMeasurementSerializer(serializers.ModelSerializer):
     measurementId = serializers.UUIDField(source="id", read_only=True)
     sampleDate = serializers.DateField(source="sample_date", read_only=True)
     sampleTime = serializers.TimeField(source="sample_time", read_only=True)
     parameterCount = serializers.IntegerField(source="parameter_count", read_only=True)
+    pollutants = serializers.SerializerMethodField()
 
     class Meta:
         model = WaterMeasurement
@@ -187,10 +243,15 @@ class WaterMeasurementLocationMeasurementSerializer(serializers.ModelSerializer)
             "name",
             "sampleDate",
             "sampleTime",
+            "depth",
             "temperature",
             "ph",
             "parameterCount",
+            "pollutants",
         ]
+
+    def get_pollutants(self, obj):
+        return parameters_dict_to_list(obj.pollutants_data)
 
 
 class CsvImportUploadSerializer(serializers.Serializer):
