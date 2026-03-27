@@ -257,9 +257,6 @@ export function AppTitleBar(): React.JSX.Element {
           <MenuItem onClick={() => navigate('/add-measurement')}>
             New Measurement
           </MenuItem>
-          <MenuItem onClick={() => toast.info('Session export placeholder')}>
-            Export Session
-          </MenuItem>
           <MenuItem onClick={() => window.api.window.close()}>Exit</MenuItem>
         </Menu>
         <Menu title="Engine">
