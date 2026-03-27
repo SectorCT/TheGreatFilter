@@ -18,7 +18,6 @@ export const getGemstatLocations = async (): Promise<GemstatLocationFetchRespons
     authRequired: true,
     parseResponse: async (response) => {
       const payload = (await response.json()) as MeasurementMapResponse
-      console.info('[Map API] /api/measurements/map/ response:', payload)
       const locations: GemstatLocation[] = []
       let droppedCount = 0
       for (const item of payload.results ?? []) {

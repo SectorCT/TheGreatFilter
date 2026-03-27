@@ -104,19 +104,14 @@ function InvalidateOnResize(): null {
 }
 
 const getWrappedRenderPoints = (points: GemstatLocation[]): RenderPoint[] => {
-  const copies: RenderPoint[] = []
+  const renderPoints: RenderPoint[] = []
   for (const p of points) {
     const lat = p.latitude
     const lon = p.longitude
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue
-
-    copies.push(
-      { key: `${p.locationId}-w-1`, lat, lon: lon - 360, source: p },
-      { key: `${p.locationId}-w0`, lat, lon, source: p },
-      { key: `${p.locationId}-w1`, lat, lon: lon + 360, source: p }
-    )
+    renderPoints.push({ key: `${p.locationId}-w0`, lat, lon, source: p })
   }
-  return copies
+  return renderPoints
 }
 
 export default function OpenStreetMapPointsCard({
