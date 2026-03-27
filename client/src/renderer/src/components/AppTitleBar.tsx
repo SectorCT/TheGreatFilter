@@ -1,11 +1,10 @@
 import { Minus, Search, Square, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useNavigate } from 'react-router-dom'
 import { getFilters, getMeasurements, getStudies } from '@renderer/utils/api/endpoints'
 import type { FilterListItem, MeasurementListItem, Study } from '@renderer/utils/api/types'
 
-type PulseState = 'idle' | 'running' | 'error'
 type SearchKind = 'filter' | 'measurement' | 'study' | 'contaminant'
 type SearchResult = {
   id: string
@@ -35,15 +34,7 @@ function scoreText(query: string, candidate: string): number {
 
 export function AppTitleBar(): React.JSX.Element {
   const navigate = useNavigate()
-  const [engineMode, setEngineMode] = useState<'Qiskit Aer (Local)' | 'IBM Quantum (Cloud)'>(
-    'Qiskit Aer (Local)'
-  )
-  const [precision, setPrecision] = useState<
-    'Low (4 Qubits)' | 'Medium (8 Qubits)' | 'High (16 Qubits)'
-  >('Medium (8 Qubits)')
   const [dark, setDark] = useState(false)
-  const [pulseState, setPulseState] = useState<PulseState>('idle')
-  const [seconds, setSeconds] = useState(0)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
@@ -57,11 +48,6 @@ export function AppTitleBar(): React.JSX.Element {
   const [hasLoadedSnapshot, setHasLoadedSnapshot] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
   const searchContainerRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const interval = window.setInterval(() => setSeconds((prev) => prev + 1), 1000)
-    return () => window.clearInterval(interval)
-  }, [])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -89,14 +75,6 @@ export function AppTitleBar(): React.JSX.Element {
     window.addEventListener('mousedown', onPointerDown)
     return () => window.removeEventListener('mousedown', onPointerDown)
   }, [])
-
-  const pulseClass = useMemo(() => {
-    if (pulseState === 'running') return 'bg-blue-400 pulse-dot'
-    if (pulseState === 'error') return 'bg-red-400'
-    return 'bg-green-500'
-  }, [pulseState])
-
-  const timerLabel = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
 
   const fetchSearchSnapshot = async (): Promise<{
     filters: FilterListItem[]
@@ -259,24 +237,6 @@ export function AppTitleBar(): React.JSX.Element {
           </MenuItem>
           <MenuItem onClick={() => window.api.window.close()}>Exit</MenuItem>
         </Menu>
-        <Menu title="Engine">
-          <MenuItem onClick={() => setEngineMode('Qiskit Aer (Local)')}>
-            Simulator Mode: Qiskit Aer (Local)
-          </MenuItem>
-          <MenuItem onClick={() => setEngineMode('IBM Quantum (Cloud)')}>
-            Simulator Mode: IBM Quantum (Cloud)
-          </MenuItem>
-          <div className="my-1 h-px bg-border" />
-          <MenuItem onClick={() => setPrecision('Low (4 Qubits)')}>
-            Precision: Low (4 Qubits)
-          </MenuItem>
-          <MenuItem onClick={() => setPrecision('Medium (8 Qubits)')}>
-            Precision: Medium (8 Qubits)
-          </MenuItem>
-          <MenuItem onClick={() => setPrecision('High (16 Qubits)')}>
-            Precision: High (16 Qubits)
-          </MenuItem>
-        </Menu>
         <Menu title="View">
           <MenuItem
             onClick={() => {
@@ -286,7 +246,6 @@ export function AppTitleBar(): React.JSX.Element {
           >
             Toggle Dark/Light Mode
           </MenuItem>
-          <MenuItem onClick={() => toast.info('3D view reset')}>Reset 3D View</MenuItem>
         </Menu>
       </div>
 
@@ -367,21 +326,6 @@ export function AppTitleBar(): React.JSX.Element {
       </div>
 
       <div className="no-drag flex items-center gap-3">
-        <button
-          className="rounded-[6px] border border-input px-2 py-1 text-xs text-muted-foreground"
-          onClick={() => {
-            const next =
-              pulseState === 'idle' ? 'running' : pulseState === 'running' ? 'error' : 'idle'
-            setPulseState(next)
-          }}
-        >
-          <span className={`mr-1 inline-block h-2 w-2 rounded-full ${pulseClass}`} />
-          Quantum Pulse
-        </button>
-        <span className="font-mono text-xs text-muted-foreground">{timerLabel}</span>
-        <span className="hidden text-xs text-muted-foreground xl:inline">
-          {engineMode} · {precision}
-        </span>
         <div className="flex items-center">
           <ControlButton onClick={() => window.api.window.minimize()}>
             <Minus size={14} strokeWidth={1.5} />
