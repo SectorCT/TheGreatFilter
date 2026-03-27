@@ -321,6 +321,60 @@ def _compute_bonds_by_distance(
     return bonds
 
 
+def _assign_kekule_orders(
+    atoms: list[dict], bonds: list[tuple]
+) -> list[tuple]:
+    """Assign alternating double bonds (Kekulé structure) to a graphene lattice.
+
+    Uses BFS to 2-colour the bipartite honeycomb graph (sublattice A / B),
+    then greedily assigns order=2 to one A-B bond per atom.
+
+    Only C-C and C-N bonds in the aromatic lattice are upgraded.
+    Bonds to/from functional group atoms (H, O, metals) are left as order=1.
+    """
+    from collections import deque
+
+    aromatic = {"C", "N"}
+    n = len(atoms)
+
+    # Build adjacency for aromatic atoms only
+    adj: dict[int, list[int]] = {i: [] for i in range(n)
+                                  if atoms[i]["element"] in aromatic}
+    for i, j, _ in bonds:
+        if i in adj and j in adj:
+            adj[i].append(j)
+            adj[j].append(i)
+
+    # BFS 2-colouring
+    colour: dict[int, int] = {}
+    for start in adj:
+        if start in colour:
+            continue
+        queue = deque([start])
+        colour[start] = 0
+        while queue:
+            node = queue.popleft()
+            for nb in adj[node]:
+                if nb not in colour:
+                    colour[nb] = 1 - colour[node]
+                    queue.append(nb)
+
+    # Greedy Kekulé: upgrade one A→B bond per atom, neither endpoint yet doubled
+    doubled: set[int] = set()
+    bond_order: dict[tuple[int, int], int] = {(i, j): 1 for i, j, _ in bonds}
+
+    for i, j, _ in bonds:
+        if (colour.get(i) == 0 and colour.get(j) == 1
+                and i not in doubled and j not in doubled
+                and atoms[i]["element"] in aromatic
+                and atoms[j]["element"] in aromatic):
+            bond_order[(i, j)] = 2
+            doubled.add(i)
+            doubled.add(j)
+
+    return [(i, j, bond_order[(i, j)]) for i, j, _ in bonds]
+
+
 def _find_edge_atoms(
     atoms: list[dict], bonds: list[tuple], element: str = "C"
 ) -> set:
@@ -413,18 +467,23 @@ def _add_functional_groups(
             dx, dy, dz = 1.0, 0.0, 0.0
 
         if group == "oh":
+            # Tilt OH group 30° out of the graphene plane so the bond length
+            # stays exactly bond_co (1.43 Å) rather than sqrt(1.43²+0.5²).
+            _TILT = math.pi / 6  # 30 degrees
+            _cos_t, _sin_t = math.cos(_TILT), math.sin(_TILT)
+            odx, ody, odz = dx * _cos_t, dy * _cos_t, _sin_t
             oi = len(new_atoms)
             new_atoms.append({
-                "x": round(ax + dx * bond_co, 4),
-                "y": round(ay + dy * bond_co, 4),
-                "z": round(az + dz * bond_co + 0.5, 4),
+                "x": round(ax + odx * bond_co, 4),
+                "y": round(ay + ody * bond_co, 4),
+                "z": round(az + odz * bond_co, 4),
                 "element": "O",
             })
             hi = len(new_atoms)
             new_atoms.append({
-                "x": round(ax + dx * (bond_co + bond_oh), 4),
-                "y": round(ay + dy * (bond_co + bond_oh), 4),
-                "z": round(az + dz * (bond_co + bond_oh) + 0.8, 4),
+                "x": round(ax + odx * (bond_co + bond_oh), 4),
+                "y": round(ay + ody * (bond_co + bond_oh), 4),
+                "z": round(az + odz * (bond_co + bond_oh), 4),
                 "element": "H",
             })
             new_bonds.append((idx, oi, 1))
@@ -478,9 +537,14 @@ def _add_functional_groups(
 
             perp_x, perp_y = -dy, dx
             for sign in (+1, -1):
-                hx = new_atoms[ni]["x"] + (dx * 0.3 + sign * perp_x * 0.5) * bond_nh
-                hy = new_atoms[ni]["y"] + (dy * 0.3 + sign * perp_y * 0.5) * bond_nh
-                hz = new_atoms[ni]["z"] + bond_nh * 0.3
+                # Build raw 3D direction then normalize before scaling by bond_nh
+                raw_dx = dx * 0.3 + sign * perp_x * 0.5
+                raw_dy = dy * 0.3 + sign * perp_y * 0.5
+                raw_dz = 0.3
+                mag = math.sqrt(raw_dx ** 2 + raw_dy ** 2 + raw_dz ** 2) or 1.0
+                hx = new_atoms[ni]["x"] + (raw_dx / mag) * bond_nh
+                hy = new_atoms[ni]["y"] + (raw_dy / mag) * bond_nh
+                hz = new_atoms[ni]["z"] + (raw_dz / mag) * bond_nh
                 hi2 = len(new_atoms)
                 new_atoms.append({
                     "x": round(hx, 4), "y": round(hy, 4),
@@ -509,6 +573,49 @@ def _add_functional_groups(
                 })
                 new_bonds.append((idx, oi, 1))
                 new_bonds.append((partner, oi, 1))
+
+    # H-capping pass: saturate any C or N atom that still has valency < 3.
+    # This covers edge atoms that were skipped by the density roll above.
+    # Degree map is built once (O(b)) and updated incrementally to avoid
+    # rescanning the full bond list on every iteration (was O(n * b)).
+    bond_ch = 1.08  # sp2 C-H bond length
+    cap_elements = {"C", "N"}
+    degree_map: dict[int, int] = {i: 0 for i in range(len(new_atoms))}
+    neighbour_map: dict[int, list[int]] = {i: [] for i in range(len(new_atoms))}
+    for i, j, _ in new_bonds:
+        degree_map[i] += 1
+        degree_map[j] += 1
+        neighbour_map[i].append(j)
+        neighbour_map[j].append(i)
+
+    for idx, atom in enumerate(new_atoms):
+        if atom["element"] not in cap_elements:
+            continue
+        while degree_map[idx] < 3:
+            neighbours = neighbour_map[idx]
+            if neighbours:
+                nx2 = sum(new_atoms[n]["x"] for n in neighbours) / len(neighbours)
+                ny2 = sum(new_atoms[n]["y"] for n in neighbours) / len(neighbours)
+                nz2 = sum(new_atoms[n]["z"] for n in neighbours) / len(neighbours)
+                ddx = atom["x"] - nx2
+                ddy = atom["y"] - ny2
+                ddz = atom["z"] - nz2
+                mag = math.sqrt(ddx ** 2 + ddy ** 2 + ddz ** 2) or 1.0
+                ddx, ddy, ddz = ddx / mag, ddy / mag, ddz / mag
+            else:
+                ddx, ddy, ddz = 1.0, 0.0, 0.0
+            hi = len(new_atoms)
+            new_atoms.append({
+                "x": round(atom["x"] + ddx * bond_ch, 4),
+                "y": round(atom["y"] + ddy * bond_ch, 4),
+                "z": round(atom["z"] + ddz * bond_ch, 4),
+                "element": "H",
+            })
+            new_bonds.append((idx, hi, 1))
+            degree_map[hi] = 1
+            degree_map[idx] += 1
+            neighbour_map[idx].append(hi)
+            neighbour_map[hi] = [idx]
 
     return new_atoms, new_bonds
 
@@ -571,47 +678,59 @@ def _generate_graphene(a: float) -> tuple[list[dict], list[tuple]]:
     cc = _cc_bond(a)
     thresh_sq = (cc * 1.15) ** 2
     bonds = _compute_bonds_by_distance(atoms, thresh_sq, {"C"})
+    bonds = _assign_kekule_orders(atoms, bonds)
     return atoms, bonds
 
 
 # ── Armchair CNT (fixed geometry) ─────────────────────────────────────────────
 
 def _generate_cnt(a: float) -> tuple[list[dict], list[tuple]]:
-    """Armchair (6,6) CNT segment — 10 rings x 12 atoms = 120 C atoms.
+    """Armchair (6,6) CNT segment — 10 rings × 12 atoms = 120 C atoms.
 
-    Correct geometry:
-      cc_bond  = a / sqrt(3) ~ 1.42 A
-      radius   = N_PER_RING * cc_bond / (2*pi)  (circumference = 12*cc for n=6)
-      z_step   = sqrt(cc² − 2r²(1−cos(π/N)))  so each inter-ring bond = cc exactly
-    Alternating rings are rotated by pi/12 to form the armchair bridges.
+    Uses the correct (6,6) armchair radius from the chiral vector
+    |C_h| = n·a·√3, and places atoms in 6 dimers per ring (non-uniform
+    angular spacing) so that distance-based bonding gives exactly 3 bonds
+    per interior atom.
 
-    The old formula (cc*sqrt(3)/4 ≈ 0.615 Å) was too small: it put ring k and
-    ring k+2 only 1.23 Å apart (below the 1.63 Å threshold), creating false bonds
-    and pushing valency to 6–8.  The corrected value is ~1.231 Å.
+    Each ring has 6 bonded pairs (armchair dimers, chord = cc).
+    Inter-dimer gaps (~2.78 Å) are above the bond threshold.
+    Odd rings are rotated by π/6 to form the armchair bridging bonds.
     """
     cc = _cc_bond(a)
+    N_DIMERS   = 6    # armchair (6,6)
     N_PER_RING = 12
     N_RINGS    = 10
-    radius     = N_PER_RING * cc / (2 * math.pi)
-    # xy chord between adjacent atoms in consecutive (rotated) rings
-    xy_sq  = 2 * radius ** 2 * (1 - math.cos(math.pi / N_PER_RING))
-    z_step = math.sqrt(cc ** 2 - xy_sq)   # ≈ 1.231 Å
+
+    # Correct radius from chiral vector: |C_h| = n·a·√3
+    radius = N_DIMERS * a * _SQRT3 / (2 * math.pi)
+
+    # Half the angular span of one dimer (chord = cc)
+    dimer_half = math.asin(cc / (2 * radius))
+
+    # z_step from inter-ring bond: angular gap between adjacent dimer
+    # endpoints in consecutive rings, total 3D distance = cc
+    inter_ring_dtheta = math.pi / N_DIMERS - 2 * dimer_half
+    xy_chord = 2 * radius * math.sin(inter_ring_dtheta / 2)
+    z_step = math.sqrt(cc ** 2 - xy_chord ** 2)
 
     atoms: list[dict] = []
     for ring in range(N_RINGS):
-        angle_offset = (ring % 2) * (math.pi / N_PER_RING)
+        ring_offset = (ring % 2) * (math.pi / N_DIMERS)
         z = round(ring * z_step, 4)
-        for i in range(N_PER_RING):
-            angle = 2 * math.pi * i / N_PER_RING + angle_offset
-            atoms.append({
-                "x": round(radius * math.cos(angle), 4),
-                "y": round(radius * math.sin(angle), 4),
-                "z": z,
-                "element": "C",
-            })
+        for d in range(N_DIMERS):
+            center = 2 * math.pi * d / N_DIMERS + ring_offset
+            for sign in (-1, +1):
+                angle = center + sign * dimer_half
+                atoms.append({
+                    "x": round(radius * math.cos(angle), 4),
+                    "y": round(radius * math.sin(angle), 4),
+                    "z": z,
+                    "element": "C",
+                })
 
     thresh_sq = (cc * 1.15) ** 2
     bonds = _compute_bonds_by_distance(atoms, thresh_sq, {"C"})
+    bonds = _assign_kekule_orders(atoms, bonds)
     return atoms, bonds
 
 
@@ -640,6 +759,7 @@ def _generate_graphene_oxide(
     cc = _cc_bond(a)
     thresh_sq = (cc * 1.15) ** 2
     bonds = _compute_bonds_by_distance(atoms, thresh_sq, {"C", "N"})
+    bonds = _assign_kekule_orders(atoms, bonds)
 
     edge = _find_edge_atoms(atoms, bonds, element="C")
     atoms, bonds = _add_functional_groups(
@@ -679,6 +799,7 @@ def _generate_composite(
     layer0 = _generate_graphene_sheet(a, nx=6, ny=4, z_offset=0.0)
     layer0 = _apply_n_doping(layer0, doping_level, rng0, z_offset=0.0)
     bonds0 = _compute_bonds_by_distance(layer0, thresh_sq, {"C", "N"})
+    bonds0 = _assign_kekule_orders(layer0, bonds0)
     edge0  = _find_edge_atoms(layer0, bonds0, element="C")
     layer0, bonds0 = _add_functional_groups(
         layer0, bonds0, edge0, cc, "Pb", density, rng0,
@@ -701,6 +822,7 @@ def _generate_composite(
     layer1 = _apply_n_doping(layer1, doping_level * 0.5, rng1)
 
     bonds1_raw = _compute_bonds_by_distance(layer1, thresh_sq, {"C", "N"})
+    bonds1_raw = _assign_kekule_orders(layer1, bonds1_raw)
     edge1 = _find_edge_atoms(layer1, bonds1_raw, element="C")
     layer1, bonds1_func = _add_functional_groups(
         layer1, bonds1_raw, edge1, cc, pollutant_symbol, density * 0.8, rng1,
@@ -745,6 +867,7 @@ def _generate_mof(
     base = _generate_graphene_sheet(a, nx=5, ny=3, z_offset=0.0)
     base = _apply_n_doping(base, 0.10, rng)
     bonds_base = _compute_bonds_by_distance(base, thresh_sq, {"C", "N"})
+    bonds_base = _assign_kekule_orders(base, bonds_base)
     edge_base  = _find_edge_atoms(base, bonds_base, element="C")
     base, bonds_base = _add_functional_groups(
         base, bonds_base, edge_base, cc, pollutant_symbol, 0.4, rng,
