@@ -137,7 +137,6 @@ The canonical template is [server/env.example](server/env.example). Docker Compo
 
 | Variable | Purpose |
 |----------|---------|
-| `EMAIL_*`, `DEFAULT_FROM_EMAIL` | SMTP for password reset and similar mail. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google OAuth. |
 | `LINUX_APPIMAGE_PATH` | Path to a desktop artifact served by Django (see [server/backend/backend/settings.py](server/backend/backend/settings.py)). |
 | `GEMSTAT_DATASET_DIR` | Reserved in `env.example`; ingestion uses the path you pass to `sync_gemstat_measurements` (see below). |
@@ -169,13 +168,6 @@ CORE_SERVICE_URL=http://core:8000
 
 GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-google-client-secret
-
-EMAIL_HOST=
-EMAIL_PORT=587
-EMAIL_USE_TLS=True
-EMAIL_HOST_USER=
-EMAIL_HOST_PASSWORD=
-DEFAULT_FROM_EMAIL=noreply@example.com
 ```
 
 ### Client example
