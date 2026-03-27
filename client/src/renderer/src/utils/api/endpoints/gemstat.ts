@@ -11,6 +11,7 @@ import {
   type MeasurementParameter
 } from '../types'
 import GemstatLocationsWorker from '@renderer/workers/gemstatLocations.worker?worker'
+import GemstatStationMeasurementsWorker from '@renderer/workers/gemstatStationMeasurements.worker?worker'
 
 let locationsInFlight: Promise<GemstatLocationFetchResponse> | null = null
 let locationsCache: { value: GemstatLocationFetchResponse; expiresAt: number } | null = null
@@ -178,6 +179,126 @@ const normalizeLocations = async (results: MeasurementMapResponse['results'] = [
   }
 }
 
+let stationMeasurementsWorker: Worker | null = null
+let stationMeasurementsRequestId = 0
+const stationMeasurementsPending = new Map<
+  number,
+  {
+    resolve: (resp: { rows: GemstatLocationRow[]; measurements: GemstatStationMeasurementRow[]; measurementId: string; source: string; stationName: string | null }) => void
+    reject: (reason?: unknown) => void
+  }
+>()
+
+const getStationMeasurementsWorker = (): Worker | null => {
+  if (typeof Worker === 'undefined') return null
+  if (!stationMeasurementsWorker) {
+    stationMeasurementsWorker = new GemstatStationMeasurementsWorker()
+    stationMeasurementsWorker.onmessage = (event: MessageEvent<any>) => {
+      const id = event.data?.id
+      if (typeof id !== 'number') return
+      const pending = stationMeasurementsPending.get(id)
+      if (!pending) return
+      stationMeasurementsPending.delete(id)
+      const data = event.data?.data
+      if (!data || data.ok !== true) {
+        pending.reject(new Error(data?.error ?? 'station measurements worker failed'))
+        return
+      }
+      pending.resolve({
+        rows: data.rows as GemstatLocationRow[],
+        measurements: data.measurements as GemstatStationMeasurementRow[],
+        measurementId: data.measurementId as string,
+        source: data.source as string,
+        stationName: data.stationName as string | null
+      })
+    }
+
+    stationMeasurementsWorker.onerror = () => {
+      for (const pending of stationMeasurementsPending.values()) {
+        pending.reject(new Error('Station measurements worker failed'))
+      }
+      stationMeasurementsPending.clear()
+      stationMeasurementsWorker?.terminate()
+      stationMeasurementsWorker = null
+    }
+  }
+  return stationMeasurementsWorker
+}
+
+const normalizeStationMeasurements = async (
+  locationId: string,
+  payload: Record<string, unknown>
+): Promise<{
+  measurementId: string
+  locationId: string
+  stationName: string | null
+  source: string
+  rows: GemstatLocationRow[]
+  measurements: GemstatStationMeasurementRow[]
+}> => {
+  const worker = getStationMeasurementsWorker()
+
+  const normalizeFallback = (): {
+    measurementId: string
+    locationId: string
+    stationName: string | null
+    source: string
+    rows: GemstatLocationRow[]
+    measurements: GemstatStationMeasurementRow[]
+  } => {
+    const rows = normalizeStationRows(payload)
+    return {
+      measurementId:
+        typeof payload.measurementId === 'string' ? payload.measurementId : `station-${locationId}`,
+      locationId: typeof payload.locationId === 'string' ? payload.locationId : locationId,
+      stationName:
+        (typeof payload.name === 'string' && payload.name) ||
+        (typeof payload.stationId === 'string' && payload.stationId) ||
+        null,
+      source: typeof payload.source === 'string' ? payload.source : 'gemstat',
+      rows,
+      measurements: rows.flatMap((row) => toStationRows(row))
+    }
+  }
+
+  if (!worker) return normalizeFallback()
+
+  const id = ++stationMeasurementsRequestId
+  const request = new Promise<{
+    measurementId: string
+    locationId: string
+    stationName: string | null
+    source: string
+    rows: GemstatLocationRow[]
+    measurements: GemstatStationMeasurementRow[]
+  }>((resolve, reject) => {
+    stationMeasurementsPending.set(id, {
+      resolve: (resp) =>
+        resolve({
+          measurementId: resp.measurementId,
+          locationId,
+          stationName: resp.stationName,
+          source: resp.source,
+          rows: resp.rows,
+          measurements: resp.measurements
+        }),
+      reject
+    })
+    worker.postMessage({ id, payload, locationId })
+  })
+
+  try {
+    return await Promise.race([
+      request,
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('station measurements worker timeout')), 15_000)
+      })
+    ]).catch(() => normalizeFallback())
+  } catch {
+    return normalizeFallback()
+  }
+}
+
 export const getGemstatLocations = async (): Promise<GemstatLocationFetchResponse> => {
   if (!locationsCache) {
     locationsCache = readLocationsCacheFromStorage()
@@ -246,18 +367,14 @@ export const getGemstatStationMeasurements = async (
     authRequired: true,
     parseResponse: async (response) => {
       const payload = (await response.json()) as Record<string, unknown>
-      const rows = normalizeStationRows(payload)
+      const normalized = await normalizeStationMeasurements(locationId, payload)
       return {
-        measurementId:
-          typeof payload.measurementId === 'string' ? payload.measurementId : `station-${locationId}`,
-        locationId: typeof payload.locationId === 'string' ? payload.locationId : locationId,
-        stationName:
-          (typeof payload.name === 'string' && payload.name) ||
-          (typeof payload.stationId === 'string' && payload.stationId) ||
-          null,
-        source: typeof payload.source === 'string' ? payload.source : 'gemstat',
-        rows,
-        measurements: rows.flatMap((row) => toStationRows(row)),
+        measurementId: normalized.measurementId,
+        locationId: normalized.locationId,
+        stationName: normalized.stationName,
+        source: normalized.source,
+        rows: normalized.rows,
+        measurements: normalized.measurements
       }
     },
     fake404: () => ({
@@ -424,7 +541,7 @@ const normalizeStationRows = (payload: Record<string, unknown>): GemstatLocation
       const sampleTime = sampleTimeRaw.length >= 5 ? sampleTimeRaw.slice(0, 5) : sampleTimeRaw
       const pollutants = Array.isArray(record.pollutants) ? record.pollutants : []
       const parameters: MeasurementParameter[] = pollutants
-        .map((pollutant) => {
+        .map((pollutant): MeasurementParameter | null => {
           const p = (pollutant ?? {}) as Record<string, unknown>
           if (typeof p.parameterCode !== 'string') return null
           if (typeof p.value !== 'number' || !Number.isFinite(p.value)) return null

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, Loader2 } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -185,6 +185,7 @@ export function GemstatMapPanel(): React.JSX.Element {
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingStation, setIsLoadingStation] = useState(false)
   const [canRenderMap, setCanRenderMap] = useState(false)
+  const stationLoadSeqRef = useRef(0)
 
   useEffect(() => {
     let cancelled = false
@@ -238,22 +239,60 @@ export function GemstatMapPanel(): React.JSX.Element {
     [stationRows, stationMeasurements],
   )
 
-  const onContinueFromMap = async (): Promise<void> => {
-    if (!selectedStation) return
+  const loadStationData = async (station: GemstatLocation): Promise<boolean> => {
+    const requestId = stationLoadSeqRef.current + 1
+    stationLoadSeqRef.current = requestId
     setIsLoadingStation(true)
     setError(null)
+
     try {
-      const stationData = await getGemstatStationMeasurements(selectedStation.locationId)
+      // Ensure the UI has a chance to paint the loading state
+      // before we start the potentially heavy network response handling.
+      await new Promise<void>((resolve) => {
+        if (typeof window !== 'undefined' && 'requestAnimationFrame' in window) {
+          window.requestAnimationFrame(() => resolve())
+        } else {
+          setTimeout(() => resolve(), 0)
+        }
+      })
+
+      const stationData = await getGemstatStationMeasurements(station.locationId)
+      // Ignore stale responses if user selected another station meanwhile.
+      if (stationLoadSeqRef.current !== requestId) {
+        return false
+      }
       setStationRows(stationData.rows ?? [])
       setStationMeasurements(stationData.measurements)
       setActionMessage(null)
-      setStep('timestamps')
+      return true
     } catch (e) {
+      if (stationLoadSeqRef.current !== requestId) {
+        return false
+      }
       console.error(e)
       setError('Failed to load station parameter history')
+      return false
     } finally {
-      setIsLoadingStation(false)
+      if (stationLoadSeqRef.current === requestId) {
+        setIsLoadingStation(false)
+      } else {
+      }
     }
+  }
+
+  const onSelectStation = async (station: GemstatLocation): Promise<void> => {
+    setSelectedStation(station)
+    await loadStationData(station)
+  }
+
+  const onContinueFromMap = async (): Promise<void> => {
+    if (!selectedStation) return
+    const hasDataLoadedForSelection = stationRows.length > 0 || stationMeasurements.length > 0
+    if (!hasDataLoadedForSelection) {
+      const ok = await loadStationData(selectedStation)
+      if (!ok) return
+    }
+    setStep('timestamps')
   }
 
   const onAskNameForRow = (row: DateRow): void => {
@@ -337,7 +376,9 @@ export function GemstatMapPanel(): React.JSX.Element {
                       <OpenStreetMapPointsCard
                         points={locations}
                         selectedLocationId={selectedStation?.locationId ?? null}
-                        onSelectPoint={(point) => setSelectedStation(point)}
+                        onSelectPoint={(point) => {
+                          void onSelectStation(point)
+                        }}
                       />
                     </Suspense>
                   ) : null}
@@ -353,10 +394,7 @@ export function GemstatMapPanel(): React.JSX.Element {
               )}
             </div>
             <div className="rounded-[6px] border border-border bg-muted/30 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold">Selected station</h3>
-                {isLoadingStation ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
-              </div>
+              <h3 className="text-sm font-semibold">Selected station</h3>
               {selectedStation ? (
                 <div className="mt-3 space-y-2 text-sm">
                   <p className="font-medium">{formatStationTitle(selectedStation)}</p>
@@ -382,15 +420,19 @@ export function GemstatMapPanel(): React.JSX.Element {
                   Click a map point to inspect and select a station.
                 </p>
               )}
-              {isLoadingStation ? (
-                <p className="mt-2 text-xs text-muted-foreground">Loading station data...</p>
-              ) : null}
               <Button
-                className="mt-4 w-full"
+                className={`mt-4 w-full ${isLoadingStation ? 'disabled:opacity-100 disabled:text-foreground' : ''}`}
                 disabled={!selectedStation || isLoadingStation}
                 onClick={() => void onContinueFromMap()}
               >
-                {isLoadingStation ? 'Loading station data...' : 'Show station timestamps'}
+                {isLoadingStation ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Loading station data...
+                  </>
+                ) : (
+                  'Show station timestamps'
+                )}
               </Button>
             </div>
           </div>
