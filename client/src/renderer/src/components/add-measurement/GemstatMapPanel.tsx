@@ -145,7 +145,7 @@ function renderProbeValueChips(parameters: DateRow['parameters']): React.JSX.Ele
   }
 
   return (
-    <div className="flex max-w-[560px] flex-wrap items-center gap-x-2 gap-y-1.5">
+    <div className="flex max-w-full flex-wrap items-center gap-x-2 gap-y-1.5">
       {shown.map((parameter) => {
         const unitText = parameter.unit?.trim()
         const unit = unitText ? ` ${normalizeSymbolText(unitText)}` : ''
@@ -340,7 +340,7 @@ export function GemstatMapPanel(): React.JSX.Element {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 rounded-[6px] border border-border bg-card p-5">
-      <div>
+      <div className="shrink-0">
         <h2 className="text-sm font-semibold">GemStat Map</h2>
         <p className="text-sm text-muted-foreground">
           Select a station and list all sample timestamps.
@@ -469,9 +469,9 @@ export function GemstatMapPanel(): React.JSX.Element {
       ) : null}
 
       {step === 'timestamps' ? (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
               <h3 className="text-sm font-semibold">
                 {selectedStation ? formatStationTitle(selectedStation) : 'Station'}
               </h3>
@@ -483,7 +483,7 @@ export function GemstatMapPanel(): React.JSX.Element {
               <ChevronLeft className="mr-1 h-4 w-4" /> Back to map
             </Button>
           </div>
-          <div className="overflow-x-auto rounded-[6px] border border-border">
+          <div className="min-h-0 min-w-0 flex-1 overflow-auto rounded-[6px] border border-border">
             <table className="w-full min-w-[680px] text-sm">
               <thead className="bg-muted/40 text-left">
                 <tr>
@@ -495,18 +495,18 @@ export function GemstatMapPanel(): React.JSX.Element {
               <tbody>
                 {sampleRows.map((row) => (
                   <tr key={row.stamp} className="border-t border-border">
-                    <td className="px-3 py-2 font-mono text-xs">{row.stamp}</td>
-                    <td className="px-3 py-2 text-xs text-muted-foreground">
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs align-top">{row.stamp}</td>
+                    <td className="max-w-0 px-3 py-2 text-xs text-muted-foreground align-top">
                       {renderProbeValueChips(row.parameters)}
                     </td>
-                    <td className="px-3 py-2 text-right">
+                    <td className="whitespace-nowrap px-3 py-2 text-right align-top">
                       {activeRowKey === row.rowKey ? (
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
                           <input
                             value={measurementName}
                             onChange={(event) => setMeasurementName(event.target.value)}
                             placeholder="Measurement name"
-                            className="h-8 w-64 rounded-[6px] border border-input bg-background px-2 text-xs"
+                            className="h-8 min-w-0 w-64 max-w-full rounded-[6px] border border-input bg-background px-2 text-xs"
                           />
                           <Button
                             size="sm"
