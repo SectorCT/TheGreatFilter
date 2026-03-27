@@ -1,10 +1,14 @@
 import { ArrowLeft, Download, Eye, Microscope, Play } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
   PolarAngleAxis,
   PolarGrid,
   PolarRadiusAxis,
@@ -21,26 +25,6 @@ import { Button } from '@renderer/components/ui/button'
 import { exportFilterCsv, getFilterDetails, getFilterStatus } from '@renderer/utils/api/endpoints'
 import { type FilterDetailsSuccessResponse, type FilterStatus } from '@renderer/utils/api/types'
 import { buildFilterInfoViewModel } from '@renderer/utils/filterInfoViewModel'
-
-function useMeasuredSize() {
-  const ref = useRef<HTMLDivElement | null>(null)
-  const [size, setSize] = useState({ width: 0, height: 0 })
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-
-    const observer = new ResizeObserver((entries) => {
-      const cr = entries[0]?.contentRect
-      if (!cr) return
-      setSize({ width: cr.width, height: cr.height })
-    })
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  return { ref, width: size.width, height: size.height }
-}
 
 export function FilterDetails(): React.JSX.Element {
   const navigate = useNavigate()
@@ -116,9 +100,39 @@ export function FilterDetails(): React.JSX.Element {
     ],
     [view]
   )
-
-  const barSize = useMeasuredSize()
-  const radarSize = useMeasuredSize()
+  const compositionData = useMemo(() => {
+    if (view.parameterBarData.length > 0) return view.parameterBarData
+    const fallback = [
+      { code: 'PH', name: 'pH', value: view.metrics.ph ?? 7, unit: '' },
+      { code: 'TMP', name: 'Temperature', value: view.metrics.temperature ?? 25, unit: 'C' },
+      { code: 'PSE', name: 'Pore Size', value: view.metrics.poreSize ?? 1, unit: 'nm' },
+      { code: 'BND', name: 'Binding Energy', value: view.metrics.bindingEnergy ?? 1, unit: 'eV' },
+      { code: 'EFF', name: 'Removal', value: view.metrics.removalEfficiency ?? 50, unit: '%' }
+    ]
+    return fallback.map((item) => ({ ...item, value: Number(item.value.toFixed(4)) }))
+  }, [view])
+  const fingerprintData = useMemo(() => {
+    if (view.parameterRadarData.length > 0) return view.parameterRadarData
+    const clamp = (value: number): number => Math.max(0, Math.min(100, Math.round(value)))
+    return [
+      { parameter: 'Efficiency', value: clamp(view.metrics.removalEfficiency ?? 50) },
+      { parameter: 'Pore Fit', value: clamp(((view.metrics.poreSize ?? 1) / 3) * 100) },
+      { parameter: 'Binding', value: clamp((Math.abs(view.metrics.bindingEnergy ?? 1) / 5) * 100) },
+      { parameter: 'Neutral pH', value: clamp((1 - Math.min(1, Math.abs((view.metrics.ph ?? 7) - 7) / 7)) * 100) },
+      {
+        parameter: 'Thermal Stability',
+        value: clamp((1 - Math.min(1, Math.abs((view.metrics.temperature ?? 25) - 25) / 50)) * 100)
+      }
+    ]
+  }, [view])
+  const donutData = useMemo(() => {
+    const sorted = compositionData
+      .filter((item) => item.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5)
+    return sorted.length > 0 ? sorted : [{ code: 'N/A', name: 'No Data', value: 1, unit: '' }]
+  }, [compositionData])
+  const donutColors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6']
 
   const handleExportCsv = async (): Promise<void> => {
     if (!id || status !== 'Success') return
@@ -236,59 +250,105 @@ export function FilterDetails(): React.JSX.Element {
           <div className="grid grid-cols-1 gap-6 2xl:grid-cols-2">
             <div className="rounded-[6px] border border-border bg-card p-4">
               <h2 className="mb-2 text-sm font-semibold">Parameter Composition</h2>
-              <div ref={barSize.ref} className="h-72 w-full min-w-0">
-                {barSize.width > 0 && barSize.height > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                    <BarChart data={view.parameterBarData} margin={{ top: 6, right: 12, left: 0, bottom: 8 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                      <XAxis dataKey="code" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
-                      <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
-                      <Tooltip
-                        formatter={(value, _name, item) => [
-                          `${String(value ?? '-')} ${((item?.payload as { unit?: string } | undefined)?.unit ?? '')}`.trim(),
-                          'Value'
-                        ]}
-                        contentStyle={{
-                          borderRadius: 8,
-                          borderColor: 'hsl(var(--border))',
-                          background: 'hsl(var(--card))'
-                        }}
-                      />
-                      <Bar dataKey="value" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : null}
+              <div className="h-72 w-full min-w-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={compositionData} margin={{ top: 6, right: 12, left: 0, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="code" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
+                    <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
+                    <Tooltip
+                      formatter={(value, _name, item) => [
+                        `${String(value ?? '-')} ${((item?.payload as { unit?: string } | undefined)?.unit ?? '')}`.trim(),
+                        'Value'
+                      ]}
+                      contentStyle={{
+                        borderRadius: 8,
+                        borderColor: 'hsl(var(--border))',
+                        background: 'hsl(var(--card))'
+                      }}
+                    />
+                    <Bar dataKey="value" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
+              {view.parameterBarData.length === 0 ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Experimental parameter values unavailable; showing derived profile from filter metrics.
+                </p>
+              ) : null}
             </div>
 
             <div className="rounded-[6px] border border-border bg-card p-4">
               <h2 className="mb-2 text-sm font-semibold">Quality Fingerprint</h2>
-              <div ref={radarSize.ref} className="h-72 w-full min-w-0">
-                {radarSize.width > 0 && radarSize.height > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                    <RadarChart data={view.parameterRadarData}>
-                      <PolarGrid stroke="hsl(var(--border))" />
-                      <PolarAngleAxis
-                        dataKey="parameter"
-                        tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                      />
-                      <PolarRadiusAxis
-                        domain={[0, 100]}
-                        tickCount={6}
-                        tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                      />
-                      <Radar dataKey="value" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.28} />
-                      <Tooltip
-                        formatter={(value) => [`${String(value ?? '-')}%`, 'Normalized']}
-                        contentStyle={{
-                          borderRadius: 8,
-                          borderColor: 'hsl(var(--border))',
-                          background: 'hsl(var(--card))'
-                        }}
-                      />
-                    </RadarChart>
-                  </ResponsiveContainer>
-                ) : null}
+              <div className="h-72 w-full min-w-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadarChart data={fingerprintData}>
+                    <PolarGrid stroke="hsl(var(--border))" />
+                    <PolarAngleAxis
+                      dataKey="parameter"
+                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                    />
+                    <PolarRadiusAxis
+                      domain={[0, 100]}
+                      tickCount={6}
+                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                    />
+                    <Radar dataKey="value" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.28} />
+                    <Tooltip
+                      formatter={(value) => [`${String(value ?? '-')}%`, 'Normalized']}
+                      contentStyle={{
+                        borderRadius: 8,
+                        borderColor: 'hsl(var(--border))',
+                        background: 'hsl(var(--card))'
+                      }}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+              {view.parameterRadarData.length === 0 ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Fingerprint is estimated from efficiency, pore size, binding, pH, and temperature.
+                </p>
+              ) : null}
+            </div>
+
+            <div className="rounded-[6px] border border-border bg-card p-4 2xl:col-span-2">
+              <h2 className="mb-2 text-sm font-semibold">Composition Share (Top Signals)</h2>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={donutData}
+                      dataKey="value"
+                      nameKey="code"
+                      innerRadius={64}
+                      outerRadius={92}
+                      paddingAngle={2}
+                    >
+                      {donutData.map((entry, index) => (
+                        <Cell key={`${entry.code}-${index}`} fill={donutColors[index % donutColors.length]} />
+                      ))}
+                    </Pie>
+                    <Legend
+                      formatter={(value, _entry, index) => {
+                        const data = donutData[index]
+                        if (!data) return String(value)
+                        return `${data.code}: ${data.value} ${data.unit}`.trim()
+                      }}
+                    />
+                    <Tooltip
+                      formatter={(value, _name, item) => {
+                        const payload = item?.payload as { unit?: string; name?: string } | undefined
+                        return [`${String(value ?? '-')} ${payload?.unit ?? ''}`.trim(), payload?.name ?? 'Signal']
+                      }}
+                      contentStyle={{
+                        borderRadius: 8,
+                        borderColor: 'hsl(var(--border))',
+                        background: 'hsl(var(--card))'
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
             </div>
           </div>

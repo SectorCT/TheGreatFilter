@@ -547,8 +547,14 @@ const normalizeStationRows = (payload: Record<string, unknown>): GemstatLocation
           if (typeof p.value !== 'number' || !Number.isFinite(p.value)) return null
           return {
             parameterCode: p.parameterCode,
-            parameterName: typeof p.parameterName === 'string' ? p.parameterName : null,
-            unit: typeof p.unit === 'string' ? p.unit : null,
+            parameterName:
+              typeof p.parameterName === 'string' && p.parameterName.trim().length > 0
+                ? p.parameterName
+                : undefined,
+            unit:
+              typeof p.unit === 'string' && p.unit.trim().length > 0
+                ? p.unit
+                : undefined,
             value: p.value
           }
         })
