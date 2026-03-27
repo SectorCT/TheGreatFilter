@@ -184,7 +184,6 @@ export function GemstatMapPanel(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingStation, setIsLoadingStation] = useState(false)
-  const [isPreparingMap, setIsPreparingMap] = useState(false)
   const [canRenderMap, setCanRenderMap] = useState(false)
 
   useEffect(() => {
@@ -216,19 +215,15 @@ export function GemstatMapPanel(): React.JSX.Element {
     if (step !== 'map') return
     if (isLoading || !locations || locations.length === 0) {
       setCanRenderMap(false)
-      setIsPreparingMap(false)
       return
     }
 
-    setIsPreparingMap(true)
     setCanRenderMap(false)
 
     let raf2 = 0
     const raf1 = window.requestAnimationFrame(() => {
       raf2 = window.requestAnimationFrame(() => {
         setCanRenderMap(true)
-        // Keep the loading UI visible for one more paint cycle.
-        window.setTimeout(() => setIsPreparingMap(false), 120)
       })
     })
 
@@ -247,13 +242,12 @@ export function GemstatMapPanel(): React.JSX.Element {
     if (!selectedStation) return
     setIsLoadingStation(true)
     setError(null)
-    // Switch immediately so users get instant feedback while station data loads.
-    setStep('timestamps')
     try {
       const stationData = await getGemstatStationMeasurements(selectedStation.locationId)
       setStationRows(stationData.rows ?? [])
       setStationMeasurements(stationData.measurements)
       setActionMessage(null)
+      setStep('timestamps')
     } catch (e) {
       console.error(e)
       setError('Failed to load station parameter history')
@@ -322,22 +316,9 @@ export function GemstatMapPanel(): React.JSX.Element {
       {step === 'map' ? (
         <div className="flex min-h-0 flex-1 flex-col gap-4">
           {isLoading ? (
-            <div className="space-y-1.5">
-              <p className="text-xs text-muted-foreground">Loading map data...</p>
-              <div className="h-2 w-full overflow-hidden rounded bg-secondary">
-                <div
-                  className="h-full w-1/3 bg-primary"
-                  style={{
-                    animation: 'tgif-progress-indeterminate 1.1s ease-in-out infinite',
-                  }}
-                />
-              </div>
-              <style>{`
-                @keyframes tgif-progress-indeterminate {
-                  0% { transform: translateX(-110%); }
-                  100% { transform: translateX(330%); }
-                }
-              `}</style>
+            <div className="flex items-center gap-2 rounded-[6px] border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading map data...
             </div>
           ) : null}
           <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
@@ -360,17 +341,6 @@ export function GemstatMapPanel(): React.JSX.Element {
                       />
                     </Suspense>
                   ) : null}
-                  {isPreparingMap ? (
-                    <div className="absolute inset-0 z-10 flex flex-col justify-center gap-2 bg-background/65 px-4 backdrop-blur-[1px]">
-                      <p className="text-xs text-muted-foreground">Preparing interactive map...</p>
-                      <div className="h-1.5 w-full overflow-hidden rounded bg-secondary">
-                        <div
-                          className="h-full w-1/3 bg-primary"
-                          style={{ animation: 'tgif-progress-indeterminate 1.1s ease-in-out infinite' }}
-                        />
-                      </div>
-                    </div>
-                  ) : null}
                 </>
               ) : !isLoading && locations && locations.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
@@ -383,7 +353,10 @@ export function GemstatMapPanel(): React.JSX.Element {
               )}
             </div>
             <div className="rounded-[6px] border border-border bg-muted/30 p-4">
-              <h3 className="text-sm font-semibold">Selected station</h3>
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold">Selected station</h3>
+                {isLoadingStation ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
+              </div>
               {selectedStation ? (
                 <div className="mt-3 space-y-2 text-sm">
                   <p className="font-medium">{formatStationTitle(selectedStation)}</p>
@@ -409,6 +382,9 @@ export function GemstatMapPanel(): React.JSX.Element {
                   Click a map point to inspect and select a station.
                 </p>
               )}
+              {isLoadingStation ? (
+                <p className="mt-2 text-xs text-muted-foreground">Loading station data...</p>
+              ) : null}
               <Button
                 className="mt-4 w-full"
                 disabled={!selectedStation || isLoadingStation}
