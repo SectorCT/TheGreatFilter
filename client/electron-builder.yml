@@ -1,5 +1,6 @@
 appId: com.qlean.app
 productName: Qlean
+afterPack: scripts/afterPack.cjs
 directories:
   buildResources: build
 files:
@@ -21,6 +22,9 @@ nsis:
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
 mac:
   icon: build/icon.icns
   entitlementsInherit: build/entitlements.mac.plist
