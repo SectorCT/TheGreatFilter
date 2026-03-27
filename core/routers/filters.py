@@ -40,11 +40,18 @@ async def generate_filter(req: GenerateRequest, request: Request):
         "temperature": req.temperature,
         "ph": req.ph,
         "params": [p.model_dump() for p in req.params],
+        "use_quantum_computer": req.useQuantumComputer,
     }
 
-    logger.info("POST /generate — filter_id=%s measurement=%s temp=%.1f pH=%.1f params=%s",
-                filter_id, req.measurementId, req.temperature, req.ph,
-                [p.name for p in req.params])
+    logger.info(
+        "POST /generate — filter_id=%s measurement=%s temp=%.1f pH=%.1f use_quantum=%s params=%s",
+        filter_id,
+        req.measurementId,
+        req.temperature,
+        req.ph,
+        req.useQuantumComputer,
+        [p.name for p in req.params],
+    )
 
     loop = asyncio.get_running_loop()
     executor = request.app.state.executor
@@ -164,6 +171,7 @@ def run_generation(filter_id: str, measurement_id: str, measurement_data: dict) 
         params = measurement_data.get("params", [])
         temperature = float(measurement_data.get("temperature", 25.0))
         ph = float(measurement_data.get("ph", 7.0))
+        use_quantum_computer = bool(measurement_data.get("use_quantum_computer", False))
 
         # Identify pollutant
         from services.pollutant_map import identify_pollutant
@@ -172,7 +180,8 @@ def run_generation(filter_id: str, measurement_id: str, measurement_data: dict) 
                  filter_id[:8], pollutant_symbol, pollutant_desc, pollutant_charge)
 
         # Run genetic optimizer
-        log.info("[%s] Starting genetic optimizer (pop=8, gen=3)…", filter_id[:8])
+        execution_target = "ibm_quantum" if use_quantum_computer else "simulator"
+        log.info("[%s] Starting genetic optimizer (pop=8, gen=3)… target=%s", filter_id[:8], execution_target)
         from services.genetic_optimizer import optimize_filter
         result = optimize_filter(
             pollutant_symbol=pollutant_symbol,
@@ -205,6 +214,7 @@ def run_generation(filter_id: str, measurement_id: str, measurement_data: dict) 
             "pollutant": pollutant_desc,
             "pollutantSymbol": pollutant_symbol,
             "method": result.get("method", "hf"),
+            "executionTarget": execution_target,
             "atomPositions": atom_positions,
             "connections": connections,
         }

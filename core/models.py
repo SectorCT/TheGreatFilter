@@ -13,6 +13,7 @@ class GenerateRequest(BaseModel):
     temperature: float = Field(default=25.0, ge=-5.0, le=100.0)
     ph: float = Field(default=7.0, ge=0.0, le=14.0)
     params: list[MeasurementParam] = []
+    useQuantumComputer: bool = False
 
 
 class FilterStatus(BaseModel):
@@ -39,6 +40,7 @@ class FilterInfo(BaseModel):
     pollutant: str
     pollutantSymbol: str
     method: str = "hf"
+    executionTarget: str = "simulator"
     atomPositions: list[AtomPosition]
     # Each connection: {"from": int, "to": int, "order": int}
     # "from" is a reserved keyword so stored as plain dicts, not a nested model.
