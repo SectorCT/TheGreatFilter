@@ -10,15 +10,136 @@ import {
   type Measurement,
   type MeasurementParameter
 } from '../types'
+import GemstatLocationsWorker from '@renderer/workers/gemstatLocations.worker?worker'
 
 let locationsInFlight: Promise<GemstatLocationFetchResponse> | null = null
+let locationsCache: { value: GemstatLocationFetchResponse; expiresAt: number } | null = null
+const LOCATIONS_CACHE_TTL_MS = 60_000
+
+let locationsWorker: Worker | null = null
+let workerRequestId = 0
+const workerPending = new Map<number, (locations: GemstatLocation[]) => void>()
+const workerPendingReject = new Map<number, (reason?: unknown) => void>()
+
+const getLocationsWorker = (): Worker | null => {
+  if (typeof Worker === 'undefined') return null
+  if (!locationsWorker) {
+    locationsWorker = new GemstatLocationsWorker()
+    locationsWorker.onmessage = (event: MessageEvent<{ id?: number; locations?: GemstatLocation[] }>) => {
+      const id = event.data?.id
+      if (typeof id !== 'number') return
+      const resolve = workerPending.get(id)
+      if (!resolve) return
+      workerPending.delete(id)
+      workerPendingReject.delete(id)
+      resolve(Array.isArray(event.data.locations) ? event.data.locations : [])
+    }
+    locationsWorker.onerror = () => {
+      for (const reject of workerPendingReject.values()) {
+        reject(new Error('Map worker failed'))
+      }
+      workerPending.clear()
+      workerPendingReject.clear()
+      locationsWorker?.terminate()
+      locationsWorker = null
+    }
+  }
+  return locationsWorker
+}
+
+const normalizeLocationsSync = (results: MeasurementMapResponse['results'] = []): GemstatLocation[] => {
+  const locations: GemstatLocation[] = []
+  const seenLocationIds = new Set<string>()
+  for (const item of results ?? []) {
+    const latitude = item.latitude ?? item.sampleLocation?.latitude
+    const longitude = item.longitude ?? item.sampleLocation?.longitude
+    if (
+      typeof latitude !== 'number' ||
+      !Number.isFinite(latitude) ||
+      typeof longitude !== 'number' ||
+      !Number.isFinite(longitude)
+    ) {
+      continue
+    }
+
+    const normalizedLocationId = item.locationId ?? item.sampleLocation?.station_id ?? item.measurementId
+    if (seenLocationIds.has(normalizedLocationId)) continue
+    seenLocationIds.add(normalizedLocationId)
+
+    locations.push({
+      locationId: normalizedLocationId,
+      measurementId: item.measurementId,
+      localStationNumber:
+        item.sampleLocation?.local_station_number ?? item.sampleLocation?.station_id ?? null,
+      countryName: item.sampleLocation?.country ?? null,
+      waterType: item.sampleLocation?.water_type ?? null,
+      stationIdentifier: item.sampleLocation?.station_identifier ?? null,
+      stationNarrative: item.sampleLocation?.station_narrative ?? item.name ?? null,
+      waterBodyName: item.sampleLocation?.water_body_name ?? item.name ?? null,
+      mainBasin: item.sampleLocation?.main_basin ?? null,
+      upstreamBasinArea: null,
+      elevation: null,
+      monitoringType: null,
+      dateStationOpened: item.latestSnapshot?.dateKey ?? null,
+      responsibleCollectionAgency: null,
+      latitude,
+      longitude,
+      riverWidth: null,
+      discharge: null,
+      maxDepth: null,
+      lakeArea: null,
+      lakeVolume: null,
+      averageRetention: null,
+      areaOfAquifer: null,
+      depthOfImpermableLining: null,
+      productionZone: null,
+      meanAbstractionRate: null,
+      meanAbstractionLevel: null,
+    })
+  }
+  return locations
+}
+
+const normalizeLocations = async (results: MeasurementMapResponse['results'] = []): Promise<GemstatLocation[]> => {
+  const worker = getLocationsWorker()
+  if (!worker) {
+    return normalizeLocationsSync(results)
+  }
+
+  const id = ++workerRequestId
+  const request = new Promise<GemstatLocation[]>((resolve, reject) => {
+    workerPending.set(id, resolve)
+    workerPendingReject.set(id, reject)
+    worker.postMessage({ id, results })
+  })
+
+  try {
+    const locations = await Promise.race([
+      request,
+      new Promise<GemstatLocation[]>((_, reject) =>
+        window.setTimeout(() => reject(new Error('Map worker timeout')), 10_000),
+      ),
+    ])
+    return locations
+  } catch {
+    workerPending.delete(id)
+    workerPendingReject.delete(id)
+    return normalizeLocationsSync(results)
+  }
+}
 
 export const getGemstatLocations = async (): Promise<GemstatLocationFetchResponse> => {
+  if (locationsCache && locationsCache.expiresAt > Date.now()) {
+    return locationsCache.value
+  }
+
   if (locationsInFlight) {
     return locationsInFlight
   }
 
   const startMs = performance.now()
+  let requestDurationMs: number | null = null
+  let normalizeDurationMs: number | null = null
   const startedAtIso = new Date().toISOString()
   console.info(`[Map API] locations start: ${startedAtIso}`)
 
@@ -27,56 +148,11 @@ export const getGemstatLocations = async (): Promise<GemstatLocationFetchRespons
     path: '/api/measurements/map/',
     authRequired: true,
     parseResponse: async (response) => {
+      requestDurationMs = Math.round(performance.now() - startMs)
       const payload = (await response.json()) as MeasurementMapResponse
-      const locations: GemstatLocation[] = []
-      const seenLocationIds = new Set<string>()
-      for (const item of payload.results ?? []) {
-        const latitude = item.latitude ?? item.sampleLocation?.latitude
-        const longitude = item.longitude ?? item.sampleLocation?.longitude
-        if (
-          typeof latitude !== 'number' ||
-          !Number.isFinite(latitude) ||
-          typeof longitude !== 'number' ||
-          !Number.isFinite(longitude)
-        ) {
-          continue
-        }
-
-        const normalizedLocationId = item.locationId ?? item.sampleLocation?.station_id ?? item.measurementId
-        if (seenLocationIds.has(normalizedLocationId)) continue
-        seenLocationIds.add(normalizedLocationId)
-
-        locations.push({
-          locationId: normalizedLocationId,
-          measurementId: item.measurementId,
-          localStationNumber:
-            item.sampleLocation?.local_station_number ?? item.sampleLocation?.station_id ?? null,
-          countryName: item.sampleLocation?.country ?? null,
-          waterType: item.sampleLocation?.water_type ?? null,
-          stationIdentifier: item.sampleLocation?.station_identifier ?? null,
-          stationNarrative: item.sampleLocation?.station_narrative ?? item.name ?? null,
-          waterBodyName: item.sampleLocation?.water_body_name ?? item.name ?? null,
-          mainBasin: item.sampleLocation?.main_basin ?? null,
-          upstreamBasinArea: null,
-          elevation: null,
-          monitoringType: null,
-          dateStationOpened: item.latestSnapshot?.dateKey ?? null,
-          responsibleCollectionAgency: null,
-          latitude,
-          longitude,
-          riverWidth: null,
-          discharge: null,
-          maxDepth: null,
-          lakeArea: null,
-          lakeVolume: null,
-          averageRetention: null,
-          areaOfAquifer: null,
-          depthOfImpermableLining: null,
-          productionZone: null,
-          meanAbstractionRate: null,
-          meanAbstractionLevel: null,
-        })
-      }
+      const normalizeStartMs = performance.now()
+      const locations = await normalizeLocations(payload.results ?? [])
+      normalizeDurationMs = Math.round(performance.now() - normalizeStartMs)
       return {
         locations,
       }
@@ -87,12 +163,21 @@ export const getGemstatLocations = async (): Promise<GemstatLocationFetchRespons
   })
 
   try {
-    return await locationsInFlight
+    const result = await locationsInFlight
+    locationsCache = {
+      value: result,
+      expiresAt: Date.now() + LOCATIONS_CACHE_TTL_MS,
+    }
+    return result
   } finally {
     const endMs = performance.now()
     const endedAtIso = new Date().toISOString()
-    const deltaMs = Math.round(endMs - startMs)
-    console.info(`[Map API] locations end: ${endedAtIso} (delta ${deltaMs}ms)`)
+    const totalMs = Math.round(endMs - startMs)
+    const requestMsLabel = requestDurationMs == null ? 'n/a' : `${requestDurationMs}ms`
+    const normalizeMsLabel = normalizeDurationMs == null ? 'n/a' : `${normalizeDurationMs}ms`
+    console.info(
+      `[Map API] locations end: ${endedAtIso} (request ${requestMsLabel}, normalize ${normalizeMsLabel}, total ${totalMs}ms)`,
+    )
     locationsInFlight = null
   }
 }
