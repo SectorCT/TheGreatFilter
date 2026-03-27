@@ -219,7 +219,7 @@ export function AppTitleBar(): React.JSX.Element {
     } catch (searchError) {
       setResults([])
       setActiveIndex(-1)
-      toast.error(searchError instanceof Error ? searchError.message : 'Search failed')
+      console.error(searchError)
     } finally {
       setIsSearching(false)
     }
@@ -250,9 +250,12 @@ export function AppTitleBar(): React.JSX.Element {
   return (
     <header className="drag-region flex h-12 items-center justify-between border-b border-border bg-card/90 px-3 backdrop-blur">
       <div className="no-drag flex items-center gap-2">
-        <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-secondary text-xs font-semibold">
-          H₂
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] bg-secondary text-xs font-semibold">
+          Q
         </div>
+        <span className="hidden text-sm font-semibold tracking-tight text-foreground sm:inline">
+          Qlean
+        </span>
         <Menu title="File">
           <MenuItem onClick={() => navigate('/add-measurement')}>
             New Measurement

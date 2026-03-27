@@ -15,7 +15,7 @@ from deap import base, creator, tools, algorithms
 
 from services.quantum_engine import compute_binding_energy
 
-logger = logging.getLogger("h2osim.ga")
+logger = logging.getLogger("qlean.ga")
 
 # Gene bounds: [pore_size_nm, layer_thickness_nm, material_idx,
 #               functionalization_density, doping_level]

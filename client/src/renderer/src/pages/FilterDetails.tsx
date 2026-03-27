@@ -149,6 +149,9 @@ export function FilterDetails(): React.JSX.Element {
     setError(null)
     try {
       const result = await exportFilterCsv(id)
+      if (result.kind !== 'csvText') {
+        throw new Error('Unexpected export response (expected CSV text).')
+      }
       const blob = new Blob([result.csvText], { type: 'text/csv;charset=utf-8;' })
       const href = URL.createObjectURL(blob)
       const preferredName = details?.measurementName?.trim() || details?.studyName?.trim() || 'filter'

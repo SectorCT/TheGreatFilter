@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 import { Button } from '@renderer/components/ui/button'
 import { ApiError } from '@renderer/utils/api/makeAuthenticatedReq'
 import { getAccessToken, login, signup } from '@renderer/utils/api'
@@ -68,7 +69,9 @@ export function Auth(): React.JSX.Element {
       navigate('/dashboard')
     } catch (submitError) {
       console.error(submitError)
-      setError(getAuthErrorMessage(submitError))
+      const msg = getAuthErrorMessage(submitError)
+      setError(msg)
+      toast.error(msg)
     } finally {
       setIsSubmitting(false)
     }
@@ -78,7 +81,7 @@ export function Auth(): React.JSX.Element {
     <div className="flex min-h-screen items-center justify-center bg-background p-6">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">H₂O-Sim</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Qlean</h1>
           <p className="scientific-label mt-1">Water Quality Analysis Platform</p>
         </div>
 

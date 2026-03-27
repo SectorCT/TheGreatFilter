@@ -22,7 +22,7 @@ services:
     ports:
       - "8001:8000"   # dev/debug access; web/worker reach it via service name
     environment:
-      - DB_PATH=/data/h2osim.db
+      - DB_PATH=/data/qlean.db
       - CORE_WORKERS=2
       - USE_VQE=0
       - VQE_ACTIVE_ELECTRONS=4

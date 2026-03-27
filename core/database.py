@@ -4,7 +4,7 @@ import aiosqlite
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(os.environ.get("DB_PATH", Path(__file__).parent / "h2osim.db"))
+DB_PATH = Path(os.environ.get("DB_PATH", Path(__file__).parent / "qlean.db"))
 
 
 async def init_db():

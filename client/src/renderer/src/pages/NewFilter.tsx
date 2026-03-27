@@ -268,7 +268,6 @@ export function NewFilter(): React.JSX.Element {
       const message =
         submitError instanceof Error ? submitError.message : 'Failed to trigger filter generation.'
       setError(message)
-      toast.error('Failed to trigger filter generation.')
     } finally {
       setIsSubmitting(false)
     }
@@ -302,7 +301,6 @@ export function NewFilter(): React.JSX.Element {
     } catch (createError) {
       const message = createError instanceof Error ? createError.message : 'Failed to create study.'
       setError(message)
-      toast.error('Failed to create study.')
     } finally {
       setIsCreatingStudyInline(false)
     }

@@ -119,9 +119,6 @@ export const createMeasurement = async (
     path: '/api/measurements/',
     body: request,
     authRequired: true,
-    fake404: () => ({
-      measurementId: `fake-measurement-${Date.now()}`
-    })
   })
 }
 
@@ -142,7 +139,6 @@ export const getMeasurements = async (): Promise<MeasurementListResponse> => {
         results: results.map((item, index) => normalizeMeasurementListItem(item, endpoint, index))
       }
     },
-    fake404: { results: [], count: 0 }
   })
 }
 
@@ -177,16 +173,6 @@ export const getMeasurementById = async (measurementId: string): Promise<Measure
         parameters
       }
     },
-    fake404: {
-      measurementId,
-      source: 'manual',
-      createdAt: new Date().toISOString(),
-      sampleDate: new Date().toISOString().slice(0, 10),
-      sampleTime: '10:30:00',
-      temperature: 22.1,
-      ph: 7.3,
-      parameters: []
-    }
   })
 }
 
@@ -195,7 +181,6 @@ export const getMeasurementsMap = async (): Promise<MeasurementMapResponse> => {
     method: 'GET',
     path: '/api/measurements/map/',
     authRequired: true,
-    fake404: { results: [], count: 0 }
   })
 }
 
@@ -218,6 +203,5 @@ export const importMeasurementCsv = async (
     path: '/api/measurements/import/csv/',
     body: formData,
     authRequired: true,
-    fake404: { measurementId: `fake-measurement-${Date.now()}` }
   })
 }

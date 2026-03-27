@@ -26,7 +26,7 @@ import numpy as np
 
 from services.pollutant_map import get_simulation_atom
 
-logger = logging.getLogger("h2osim.quantum")
+logger = logging.getLogger("qlean.quantum")
 
 HARTREE_TO_EV = 27.2114
 

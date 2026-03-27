@@ -12,7 +12,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-logger = logging.getLogger("h2osim")
+logger = logging.getLogger("qlean")
 
 
 @asynccontextmanager
@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
     logger.info("Core shutting down")
 
 
-app = FastAPI(title="H2O-Sim Core", lifespan=lifespan)
+app = FastAPI(title="Qlean Core", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

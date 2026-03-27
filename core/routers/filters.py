@@ -22,7 +22,7 @@ from fastapi.responses import StreamingResponse
 from database import create_filter, get_filter, sync_update_filter_status
 from models import GenerateRequest, FilterStatus, FilterDetails, FilterInfo, AtomPosition
 
-logger = logging.getLogger("h2osim.filters")
+logger = logging.getLogger("qlean.filters")
 router = APIRouter()
 
 
@@ -153,7 +153,7 @@ def run_generation(filter_id: str, measurement_id: str, measurement_data: dict) 
     import logging as _logging
     _logging.basicConfig(level=_logging.INFO,
                          format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    log = _logging.getLogger("h2osim.generation")
+    log = _logging.getLogger("qlean.generation")
 
     now = lambda: datetime.now(timezone.utc).isoformat()
 
