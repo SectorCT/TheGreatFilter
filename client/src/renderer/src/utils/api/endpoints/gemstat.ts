@@ -90,19 +90,17 @@ export const getGemstatStationMeasurements = async (
     path: `/api/measurements/locations/${locationId}/`,
     authRequired: true,
     parseResponse: async (response) => {
-      const payload = (await response.json()) as {
-        measurementId: string
-        locationId: string
-        name?: string
-        source: string
-        rows?: GemstatLocationRow[]
-      }
-      const rows = payload.rows ?? []
+      const payload = (await response.json()) as Record<string, unknown>
+      const rows = normalizeStationRows(payload)
       return {
-        measurementId: payload.measurementId,
-        locationId: payload.locationId ?? locationId,
-        stationName: payload.name ?? null,
-        source: payload.source,
+        measurementId:
+          typeof payload.measurementId === 'string' ? payload.measurementId : `station-${locationId}`,
+        locationId: typeof payload.locationId === 'string' ? payload.locationId : locationId,
+        stationName:
+          (typeof payload.name === 'string' && payload.name) ||
+          (typeof payload.stationId === 'string' && payload.stationId) ||
+          null,
+        source: typeof payload.source === 'string' ? payload.source : 'gemstat',
         rows,
         measurements: rows.flatMap((row) => toStationRows(row)),
       }
@@ -246,3 +244,63 @@ const makeStationRowFromParameter = (row: {
   unit: row.parameter.unit ?? '',
   dataQuality: null,
 })
+
+const normalizeStationRows = (payload: Record<string, unknown>): GemstatLocationRow[] => {
+  // Legacy shape: { rows: GemstatLocationRow[] }
+  if (Array.isArray(payload.rows)) {
+    return payload.rows as GemstatLocationRow[]
+  }
+
+  // Current shape: { measurements: [{ sampleDate, sampleTime, depth, temperature, ph, pollutants: [] }] }
+  const measurements = Array.isArray(payload.measurements) ? payload.measurements : []
+  return measurements
+    .map((entry, index) => {
+      const record = (entry ?? {}) as Record<string, unknown>
+      const sampleDate =
+        typeof record.sampleDate === 'string' && record.sampleDate.trim().length > 0
+          ? record.sampleDate
+          : null
+      if (!sampleDate) return null
+
+      const sampleTimeRaw =
+        typeof record.sampleTime === 'string' && record.sampleTime.trim().length > 0
+          ? record.sampleTime
+          : '00:00:00'
+      const sampleTime = sampleTimeRaw.length >= 5 ? sampleTimeRaw.slice(0, 5) : sampleTimeRaw
+      const pollutants = Array.isArray(record.pollutants) ? record.pollutants : []
+      const parameters: MeasurementParameter[] = pollutants
+        .map((pollutant) => {
+          const p = (pollutant ?? {}) as Record<string, unknown>
+          if (typeof p.parameterCode !== 'string') return null
+          if (typeof p.value !== 'number' || !Number.isFinite(p.value)) return null
+          return {
+            parameterCode: p.parameterCode,
+            parameterName: typeof p.parameterName === 'string' ? p.parameterName : null,
+            unit: typeof p.unit === 'string' ? p.unit : null,
+            value: p.value
+          }
+        })
+        .filter((item): item is MeasurementParameter => item !== null)
+
+      return {
+        dateKey: sampleDate,
+        snapshotIndex: index,
+        label: `${sampleDate} ${sampleTime}`,
+        sampleTime,
+        depth: typeof record.depth === 'number' && Number.isFinite(record.depth) ? record.depth : null,
+        volume: null,
+        temperature:
+          typeof record.temperature === 'number' && Number.isFinite(record.temperature)
+            ? record.temperature
+            : null,
+        ph: typeof record.ph === 'number' && Number.isFinite(record.ph) ? record.ph : null,
+        parameterCount:
+          typeof record.parameterCount === 'number' && Number.isFinite(record.parameterCount)
+            ? record.parameterCount
+            : parameters.length,
+        summary: typeof record.name === 'string' ? record.name : null,
+        parameters
+      } as GemstatLocationRow
+    })
+    .filter((row): row is GemstatLocationRow => row !== null)
+}
