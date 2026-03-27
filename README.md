@@ -1,14 +1,26 @@
 # TheGreatFilter
 
-Desktop and web tooling for water-quality measurements, studies, and filter generation. The backend is a Django REST API backed by PostgreSQL; long-running filter simulations run in a separate FastAPI **core** service. The desktop app is an Electron + React client that talks only to the API, not to core directly.
+Desktop and web tooling for water-quality measurements, studies, and AI-driven nano-filter design. The system uses **quantum chemistry simulation** (Hartree-Fock and Variational Quantum Eigensolver) combined with **genetic algorithm optimization** to generate filter designs that maximize pollutant-binding energy for measured water conditions.
+
+The backend is a Django REST API backed by PostgreSQL; long-running filter simulations run in a separate FastAPI **core** service. The desktop app is an Electron + React client that talks only to the API, not to core directly.
 
 More product and API contract detail lives under [docs/](docs/README.md) (PRD, user stories, contracts).
+
+## Tech stack
+
+| Component | Technologies |
+|-----------|-------------|
+| **Core (simulation)** | FastAPI, PySCF (Hartree-Fock), PennyLane + Qiskit (VQE), DEAP (genetic algorithms), SQLite |
+| **Backend** | Django, Django REST Framework, Celery, Redis, PostgreSQL, JWT + Google OAuth |
+| **Desktop client** | Electron, React 19, TypeScript, Vite, Tailwind CSS, Leaflet (maps), Recharts, 3Dmol.js (molecular viewer), serialport (USB devices) |
+| **Landing page** | Vite + React, Tailwind CSS |
+| **Infrastructure** | Docker Compose, PostgreSQL 16, Redis 7 |
 
 ## Repository layout
 
 | Path | Role |
 |------|------|
-| [core/](core/) | FastAPI simulation engine (H2O-Sim): `/health`, `/filters/*`. Uses SQLite on a Docker volume (`DB_PATH=/data/h2osim.db`) and a process pool for heavy work. |
+| [core/](core/) | FastAPI simulation engine (H2O-Sim): `/health`, `/filters/*`. Runs quantum chemistry (PySCF + PennyLane VQE) and genetic algorithm optimization (DEAP). Uses SQLite on a Docker volume (`DB_PATH=/data/h2osim.db`) and a process pool for heavy work. |
 | [server/backend/](server/backend/) | Django REST API, Celery tasks, and app code. In Compose, `./server/backend` is mounted at `/home/app/backend` in the `web` and `worker` containers. |
 | [server/](server/) | Docker image build, `requirements.txt`, and `env.example` for backend configuration. |
 | [client/](client/) | Electron + Vite + React. API calls use `VITE_API_BASE_URL`; request paths include `/api/...` (see [client/src/renderer/src/utils/api/config.ts](client/src/renderer/src/utils/api/config.ts)). |
@@ -39,10 +51,29 @@ flowchart LR
   Core --> SQLite
 ```
 
-- **Electron client → Django `web`:** JWT-authenticated JSON over HTTP (e.g. `http://localhost:8000` from the host). The desktop app **does not** call the core service; only the backend worker does.
-- **Django `web` → PostgreSQL and Redis:** Reads and writes application data; enqueues Celery jobs (for example filter generation).
-- **Celery `worker` → PostgreSQL, Redis, and core:** Executes tasks and calls the simulation service at `CORE_SERVICE_URL` (default `http://core:8000` on the internal network). See [server/backend/filters/services/runner.py](server/backend/filters/services/runner.py) (`POST /filters/generate` and status polling).
+- **Electron client -> Django `web`:** JWT-authenticated JSON over HTTP (e.g. `http://localhost:8000` from the host). The desktop app **does not** call the core service; only the backend worker does.
+- **Django `web` -> PostgreSQL and Redis:** Reads and writes application data; enqueues Celery jobs (for example filter generation).
+- **Celery `worker` -> PostgreSQL, Redis, and core:** Executes tasks and calls the simulation service at `CORE_SERVICE_URL` (default `http://core:8000` on the internal network). See [server/backend/filters/services/runner.py](server/backend/filters/services/runner.py) (`POST /filters/generate` and status polling).
 - **Core:** Persists simulation-related data in SQLite on the `core-data` volume. For debugging, core is exposed on the host at port **8001**.
+
+## How filter generation works
+
+When a user requests a filter for a water measurement, the system:
+
+1. **Pollutant mapping** — maps measured water parameters (Pb, Cd, Cl, NO3, etc.; 100+ supported) to atomic species for quantum simulation.
+2. **Genetic algorithm optimization** (DEAP) — evolves filter designs across 5 parameters:
+   - Pore size (0.3-2.0 nm)
+   - Layer thickness (0.5-5.0 nm)
+   - Material type (graphene, carbon nanotubes, graphene oxide, composite, MOF-like)
+   - Functionalization density
+   - Doping level (pyridinic nitrogen replacement)
+3. **Quantum chemistry evaluation** — for each candidate filter, computes pollutant-material binding energy:
+   - **Hartree-Fock** baseline via PySCF (STO-3G basis set)
+   - **VQE** refinement via PennyLane with UCCSD-style ansatz (when enabled)
+   - Optional execution on **IBM Quantum hardware** via Qiskit
+4. **Result** — the best filter design with per-layer binding energies, material composition, and atomic structure (exportable as CSV, XYZ, or SDF).
+
+The client displays results with interactive charts (Recharts), 3D molecular structure visualization (3Dmol.js), and per-pollutant performance metrics.
 
 ## Prerequisites
 
@@ -104,6 +135,14 @@ VITE_API_BASE_URL=http://localhost:8000
 
 The client builds request paths like `/api/auth/login/`; [client/src/renderer/src/utils/api/config.ts](client/src/renderer/src/utils/api/config.ts) accepts either a bare origin (`http://localhost:8000`) or a base URL ending in `/api`. Do not commit environment files that point to private or production APIs unless you intend to.
 
+### Key client features
+
+- **Water measurement management** — manual entry, CSV import, USB/serial lab equipment integration, GEMStat dataset browser
+- **Interactive map** — Leaflet-based station visualization with marker clustering
+- **Filter generation** — multi-pollutant selection, quantum computer toggle, real-time progress polling
+- **3D molecular viewer** — 3Dmol.js visualization of generated filter structures
+- **Charts and analytics** — Recharts-based pollutant concentration and filter performance charts
+
 ## Optional landing page
 
 ```bash
@@ -133,6 +172,33 @@ The canonical template is [server/env.example](server/env.example). Docker Compo
 | `CELERY_TASK_TIME_LIMIT`, `CELERY_TASK_SOFT_TIME_LIMIT` | Task timeouts (soft limit should stay below hard limit). |
 | `CORE_SERVICE_URL` | Base URL for the core service (`http://core:8000` inside Docker). |
 
+### Email (for password reset)
+
+| Variable | Purpose |
+|----------|---------|
+| `EMAIL_HOST` | SMTP server (e.g. `smtp.gmail.com`). |
+| `EMAIL_PORT` | SMTP port. |
+| `EMAIL_USE_TLS` | Enable TLS (`True`/`False`). |
+| `EMAIL_HOST_USER` | SMTP login email. |
+| `EMAIL_HOST_PASSWORD` | SMTP app password. |
+| `DEFAULT_FROM_EMAIL` | Sender address for outgoing emails. |
+
+### Core service (quantum simulation)
+
+These are set in `docker-compose.yml` under the `core` service and can be overridden with host environment variables or a `.env` file:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `DB_PATH` | `/data/h2osim.db` | SQLite database path for simulation state. |
+| `CORE_WORKERS` | `2` | Number of process pool workers for parallel simulation. |
+| `USE_VQE` | `1` | Enable VQE quantum refinement (`1`) or use Hartree-Fock only (`0`). |
+| `VQE_ACTIVE_ELECTRONS` | `4` | Number of active electrons in the VQE active space. |
+| `VQE_ACTIVE_ORBITALS` | `4` | Number of active orbitals in the VQE active space. |
+| `VQE_MAX_ITERATIONS` | `80` | Maximum VQE optimizer iterations. |
+| `IBM_QUANTUM_TOKEN` | *(empty)* | IBM Quantum API token. When set, VQE runs on real quantum hardware instead of the simulator. |
+| `IBM_QUANTUM_BACKEND` | `ibm_sherbrooke` | IBM Quantum backend device name. |
+| `IBM_QUANTUM_SHOTS` | `1024` | Number of measurement shots per VQE circuit on hardware. |
+
 ### Optional / feature-specific
 
 | Variable | Purpose |
@@ -158,6 +224,13 @@ DB_PORT=5432
 POSTGRES_DB=thegreatfilter
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=local-dev-postgres-password
+
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_USE_TLS=True
+EMAIL_HOST_USER=your-email@gmail.com
+EMAIL_HOST_PASSWORD=your-app-password
+DEFAULT_FROM_EMAIL=your-email@gmail.com
 
 CELERY_BROKER_URL=redis://redis:6379/0
 CELERY_RESULT_BACKEND=redis://redis:6379/0
@@ -191,14 +264,14 @@ The archive is licensed **CC BY 4.0**; credit the dataset and authors as require
 1. Create a folder **`server/backend/dataset/`** on your machine (repo root relative path).
 2. Extract or copy CSVs so **all needed files sit in that folder** (flat directory). The importer loads station and parameter catalogs from:
    - `GEMStat_station_metadata.csv`
-   - `GEMStat_parameter_metadata.csv`  
+   - `GEMStat_parameter_metadata.csv`
    Files whose names start with `GEMStat_` are not used as parameter timeseries inputs; other `*.csv` files in the same directory are candidates for `--files`.
 
 Inside Docker, the same directory appears as **`/home/app/backend/dataset`** because `./server/backend` is bind-mounted to `/home/app/backend`.
 
 ### Import command
 
-With the stack running, from the **repository root**, prefer Compose’s service name (avoids guessing container names like `thegreatfilter-web-1`):
+With the stack running, from the **repository root**, prefer Compose's service name (avoids guessing container names like `thegreatfilter-web-1`):
 
 ```bash
 docker compose exec web python manage.py sync_gemstat_measurements /home/app/backend/dataset \
