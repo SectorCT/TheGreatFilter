@@ -11,6 +11,7 @@ import {
 } from '@renderer/utils/api'
 
 type Step = 'map' | 'timestamps'
+type StationPanelState = 'idle' | 'loading' | 'success' | 'empty' | 'error'
 const OpenStreetMapPointsCard = lazy(() => import('@renderer/components/OpenStreetMapPointsCard'))
 
 type DateRow = {
@@ -184,6 +185,7 @@ export function GemstatMapPanel(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingStation, setIsLoadingStation] = useState(false)
+  const [stationPanelState, setStationPanelState] = useState<StationPanelState>('idle')
   const [canRenderMap, setCanRenderMap] = useState(false)
 
   useEffect(() => {
@@ -237,28 +239,35 @@ export function GemstatMapPanel(): React.JSX.Element {
     () => toDateRows(stationRows, stationMeasurements),
     [stationRows, stationMeasurements],
   )
+  const latestSampleStamp = sampleRows.length > 0 ? sampleRows[sampleRows.length - 1]?.stamp : null
+  const totalParameterValues = sampleRows.reduce((sum, row) => sum + row.parameters.length, 0)
 
   const loadStationData = async (station: GemstatLocation): Promise<boolean> => {
     setIsLoadingStation(true)
+    setStationPanelState('loading')
     setError(null)
 
     try {
       const stationData = await getGemstatStationMeasurements(station.locationId)
-      setStationRows(stationData.rows ?? [])
-      setStationMeasurements(stationData.measurements)
+      const nextRows = stationData.rows ?? []
+      const nextMeasurements = stationData.measurements ?? []
+      const nextSampleRows = toDateRows(nextRows, nextMeasurements)
+      setStationRows(nextRows)
+      setStationMeasurements(nextMeasurements)
+      setStationPanelState(nextSampleRows.length > 0 ? 'success' : 'empty')
       setActionMessage(null)
       return true
     } catch (e) {
       console.error(e)
       setError('Failed to load station parameter history')
+      setStationPanelState('error')
       return false
     } finally {
       setIsLoadingStation(false)
     }
   }
 
-  const onSelectStation = (station: GemstatLocation): void => {
-    // Selection only; station data fetch happens on the button click.
+  const onSelectStation = async (station: GemstatLocation): Promise<void> => {
     if (isLoadingStation) return
     setSelectedStation(station)
     setStationRows([])
@@ -266,12 +275,17 @@ export function GemstatMapPanel(): React.JSX.Element {
     setActiveRowKey(null)
     setActionMessage(null)
     setError(null)
+    setStationPanelState('loading')
+    await loadStationData(station)
   }
 
   const onContinueFromMap = async (): Promise<void> => {
     if (!selectedStation) return
-    const ok = await loadStationData(selectedStation)
-    if (!ok) return
+    if (stationPanelState === 'loading') return
+    if (stationPanelState === 'idle' || stationPanelState === 'error') {
+      const ok = await loadStationData(selectedStation)
+      if (!ok) return
+    }
     setStep('timestamps')
   }
 
@@ -394,6 +408,44 @@ export function GemstatMapPanel(): React.JSX.Element {
                     <span className="mr-1 font-medium text-foreground">Coordinates:</span>
                     {selectedStation.latitude.toFixed(4)}, {selectedStation.longitude.toFixed(4)}
                   </p>
+                  {stationPanelState === 'loading' ? (
+                    <div className="mt-3 rounded-[6px] border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span className="font-medium text-foreground">Loading station history...</span>
+                      </div>
+                      <p className="mt-1 text-xs">
+                        We are fetching all available timestamps and parameter values.
+                      </p>
+                    </div>
+                  ) : null}
+                  {stationPanelState === 'success' ? (
+                    <div className="mt-3 rounded-[6px] border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-sm">
+                      <p className="font-medium text-emerald-800">Station data loaded</p>
+                      <p className="mt-1 text-emerald-700">
+                        {sampleRows.length} timestamps ready for review.
+                      </p>
+                      <p className="text-xs text-emerald-700">
+                        Latest: {latestSampleStamp ?? 'N/A'} | Values: {totalParameterValues}
+                      </p>
+                    </div>
+                  ) : null}
+                  {stationPanelState === 'empty' ? (
+                    <div className="mt-3 rounded-[6px] border border-amber-200 bg-amber-50/60 px-3 py-2 text-sm">
+                      <p className="font-medium text-amber-800">No timestamps found</p>
+                      <p className="mt-1 text-xs text-amber-700">
+                        This station is reachable, but the backend returned no sample rows.
+                      </p>
+                    </div>
+                  ) : null}
+                  {stationPanelState === 'error' ? (
+                    <div className="mt-3 rounded-[6px] border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+                      <p className="font-medium text-destructive">Could not load station history</p>
+                      <p className="mt-1 text-xs text-destructive/90">
+                        {error ?? 'Please retry the request for this station.'}
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <p className="mt-2 text-sm text-muted-foreground">
@@ -402,10 +454,14 @@ export function GemstatMapPanel(): React.JSX.Element {
               )}
               <Button
                 className="mt-4 w-full"
-                disabled={!selectedStation || isLoadingStation}
+                disabled={!selectedStation || stationPanelState === 'idle' || stationPanelState === 'loading'}
                 onClick={() => void onContinueFromMap()}
               >
-                Show station timestamps
+                {stationPanelState === 'loading'
+                  ? 'Loading station...'
+                  : stationPanelState === 'error'
+                    ? 'Retry loading station'
+                    : 'Show station timestamps'}
               </Button>
             </div>
           </div>
