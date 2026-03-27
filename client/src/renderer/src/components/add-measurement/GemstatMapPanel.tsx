@@ -1,4 +1,4 @@
-import { lazy, Suspense, startTransition, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, Loader2 } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -175,7 +175,6 @@ export function GemstatMapPanel(): React.JSX.Element {
   const [step, setStep] = useState<Step>('map')
   const [locations, setLocations] = useState<GemstatLocation[] | null>(null)
   const [selectedStation, setSelectedStation] = useState<GemstatLocation | null>(null)
-  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null)
   const [stationRows, setStationRows] = useState<GemstatLocationRow[]>([])
   const [stationMeasurements, setStationMeasurements] = useState<GemstatStationMeasurementRow[]>([])
   const [activeRowKey, setActiveRowKey] = useState<string | null>(null)
@@ -186,7 +185,6 @@ export function GemstatMapPanel(): React.JSX.Element {
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingStation, setIsLoadingStation] = useState(false)
   const [canRenderMap, setCanRenderMap] = useState(false)
-  const stationLoadSeqRef = useRef(0)
 
   useEffect(() => {
     let cancelled = false
@@ -241,61 +239,39 @@ export function GemstatMapPanel(): React.JSX.Element {
   )
 
   const loadStationData = async (station: GemstatLocation): Promise<boolean> => {
-    const requestId = stationLoadSeqRef.current + 1
-    stationLoadSeqRef.current = requestId
     setIsLoadingStation(true)
     setError(null)
 
     try {
-      // Ensure the UI has a chance to paint the loading state
-      // before we start the potentially heavy network response handling.
-      await new Promise<void>((resolve) => {
-        if (typeof window !== 'undefined' && 'requestAnimationFrame' in window) {
-          window.requestAnimationFrame(() => resolve())
-        } else {
-          setTimeout(() => resolve(), 0)
-        }
-      })
-
       const stationData = await getGemstatStationMeasurements(station.locationId)
-      // Ignore stale responses if user selected another station meanwhile.
-      if (stationLoadSeqRef.current !== requestId) {
-        return false
-      }
       setStationRows(stationData.rows ?? [])
       setStationMeasurements(stationData.measurements)
       setActionMessage(null)
       return true
     } catch (e) {
-      if (stationLoadSeqRef.current !== requestId) {
-        return false
-      }
       console.error(e)
       setError('Failed to load station parameter history')
       return false
     } finally {
-      if (stationLoadSeqRef.current === requestId) {
-        setIsLoadingStation(false)
-      } else {
-      }
+      setIsLoadingStation(false)
     }
   }
 
   const onSelectStation = (station: GemstatLocation): void => {
-    // Sidebar selection should update immediately.
+    // Selection only; station data fetch happens on the button click.
+    if (isLoadingStation) return
     setSelectedStation(station)
-    // Map marker highlight can be deferred to avoid blocking the loading paint.
-    startTransition(() => setSelectedLocationId(station.locationId))
-    void loadStationData(station)
+    setStationRows([])
+    setStationMeasurements([])
+    setActiveRowKey(null)
+    setActionMessage(null)
+    setError(null)
   }
 
   const onContinueFromMap = async (): Promise<void> => {
     if (!selectedStation) return
-    const hasDataLoadedForSelection = stationRows.length > 0 || stationMeasurements.length > 0
-    if (!hasDataLoadedForSelection) {
-      const ok = await loadStationData(selectedStation)
-      if (!ok) return
-    }
+    const ok = await loadStationData(selectedStation)
+    if (!ok) return
     setStep('timestamps')
   }
 
@@ -379,7 +355,7 @@ export function GemstatMapPanel(): React.JSX.Element {
                     >
                       <OpenStreetMapPointsCard
                         points={locations}
-                        selectedLocationId={selectedLocationId}
+                        selectedLocationId={selectedStation?.locationId ?? null}
                         onSelectPoint={(point) => {
                           void onSelectStation(point)
                         }}
@@ -425,18 +401,11 @@ export function GemstatMapPanel(): React.JSX.Element {
                 </p>
               )}
               <Button
-                className={`mt-4 w-full ${isLoadingStation ? 'disabled:opacity-100 disabled:text-foreground' : ''}`}
+                className="mt-4 w-full"
                 disabled={!selectedStation || isLoadingStation}
                 onClick={() => void onContinueFromMap()}
               >
-                {isLoadingStation ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Loading station data...
-                  </>
-                ) : (
-                  'Show station timestamps'
-                )}
+                Show station timestamps
               </Button>
             </div>
           </div>
@@ -451,19 +420,13 @@ export function GemstatMapPanel(): React.JSX.Element {
                 {selectedStation ? formatStationTitle(selectedStation) : 'Station'}
               </h3>
               <p className="text-sm text-muted-foreground">
-                {isLoadingStation ? 'Loading station timestamps...' : 'All timestamps for this station.'}
+                All timestamps for this station.
               </p>
             </div>
             <Button variant="outline" onClick={() => setStep('map')} disabled={isLoadingStation}>
               <ChevronLeft className="mr-1 h-4 w-4" /> Back to map
             </Button>
           </div>
-          {isLoadingStation ? (
-            <div className="flex items-center gap-2 rounded-[6px] border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading measurements for {selectedStation ? formatStationTitle(selectedStation) : 'station'}...
-            </div>
-          ) : null}
           <div className="overflow-x-auto rounded-[6px] border border-border">
             <table className="w-full min-w-[680px] text-sm">
               <thead className="bg-muted/40 text-left">
