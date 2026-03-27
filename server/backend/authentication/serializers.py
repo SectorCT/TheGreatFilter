@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model, authenticate
 from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 import requests
 import os
 import base64
@@ -52,9 +53,11 @@ class RegisterSerializer(serializers.ModelSerializer):
         if User.objects.filter(email=data.get('email')).exists():
             raise serializers.ValidationError("A user with this email already exists.")
 
-        # Password complexity validation (min 8 chars as per PRD Story 1.2)
-        if len(data.get('password')) < 8:
-            raise serializers.ValidationError("Password must be at least 8 characters long.")
+        # Enforce Django password policy to stay consistent across auth flows.
+        try:
+            validate_password(data.get('password'))
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(" ".join(exc.messages))
 
         return data
 
