@@ -24,10 +24,13 @@ services:
     environment:
       - DB_PATH=/data/h2osim.db
       - CORE_WORKERS=2
-      - USE_VQE=0
+      - USE_VQE=1
       - VQE_ACTIVE_ELECTRONS=4
       - VQE_ACTIVE_ORBITALS=4
       - VQE_MAX_ITERATIONS=80
+      - IBM_QUANTUM_TOKEN=${IBM_QUANTUM_TOKEN:-}
+      - IBM_QUANTUM_BACKEND=${IBM_QUANTUM_BACKEND:-ibm_sherbrooke}
+      - IBM_QUANTUM_SHOTS=${IBM_QUANTUM_SHOTS:-1024}
     volumes:
       - core-data:/data
     healthcheck:

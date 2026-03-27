@@ -38,6 +38,7 @@ class GeneratedFilter(models.Model):
     result_payload = models.JSONField(default=dict, blank=True)
     summary_metrics = models.JSONField(default=dict, blank=True)
     export_payload = models.JSONField(default=dict, blank=True)
+    used_quantum_computer = models.BooleanField(default=False)
     error_message = models.TextField(blank=True)
     celery_task_id = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

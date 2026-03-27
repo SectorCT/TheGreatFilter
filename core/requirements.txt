@@ -4,3 +4,5 @@ pyscf
 deap
 aiosqlite
 pennylane
+pennylane-qiskit
+qiskit-ibm-runtime
