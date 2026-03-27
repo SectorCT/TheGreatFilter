@@ -1,8 +1,8 @@
 import { makeAuthenticatedReq } from '../makeAuthenticatedReq'
 import {
   type FilterDetailsSuccessResponse,
-  type FilterListResponse,
   type FilterInfo,
+  type FilterListResponse,
   type FilterStatusRefreshResponse,
   type GenerateFilterRequest,
   type GenerateFilterResponse
@@ -95,7 +95,7 @@ const buildFakeFilterInfo = (): FilterInfo => {
       bindingEnergy: -18.4,
       materialType: 'Activated Carbon'
     }
-}
+  }
 }
 
 export const getFilterDetails = async (filterId: string): Promise<FilterDetailsSuccessResponse> => {

@@ -165,15 +165,15 @@ export function FilterDetails(): React.JSX.Element {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => navigate(`/filters/${id}/analysis`)}>
+          <Button variant="outline" onClick={() => navigate(`/filters/${id}/analysis`)} disabled={!id}>
             <Microscope size={16} strokeWidth={1.5} />
             Analyze
           </Button>
-          <Button variant="outline" onClick={() => navigate(`/filters/${id}/visualize`)}>
+          <Button variant="outline" onClick={() => navigate(`/filters/${id}/visualize`)} disabled={!id}>
             <Eye size={16} strokeWidth={1.5} />
             Visualize
           </Button>
-          <Button variant="outline" onClick={() => navigate(`/filters/${id}/simulate`)}>
+          <Button variant="outline" onClick={() => navigate(`/filters/${id}/simulate`)} disabled={!id}>
             <Play size={16} strokeWidth={1.5} />
             Simulate
           </Button>
