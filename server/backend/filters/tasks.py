@@ -32,6 +32,7 @@ def generate_filter(self, filter_id):
         generated_filter.result_payload = result["result_payload"]
         generated_filter.summary_metrics = result["summary_metrics"]
         generated_filter.export_payload = result["export_payload"]
+        generated_filter.used_quantum_computer = result.get("used_quantum_computer", False)
         generated_filter.save(
             update_fields=[
                 "filter_structure",
@@ -39,6 +40,7 @@ def generate_filter(self, filter_id):
                 "result_payload",
                 "summary_metrics",
                 "export_payload",
+                "used_quantum_computer",
                 "updated_at",
             ]
         )

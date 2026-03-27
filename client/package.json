@@ -13,14 +13,14 @@
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
-    "build": "npm run typecheck && electron-vite build",
+    "build": "npm run typecheck && NODE_OPTIONS=--max-old-space-size=4096 electron-vite build",
     "postinstall": "electron-builder install-app-deps",
-    "build:unpack": "npm run build && electron-builder --dir",
+    "build:unpack": "npm run build && NODE_OPTIONS=--max-old-space-size=4096 electron-builder --dir",
     "make:icons": "python3 scripts/generate-icons.py",
-    "build:win": "npm run build && electron-builder --win",
-    "build:mac": "electron-vite build && electron-builder --mac",
-    "build:linux": "electron-vite build && electron-builder --linux",
-    "build:all": "npm run build && electron-builder -mwl"
+    "build:win": "npm run build && NODE_OPTIONS=--max-old-space-size=4096 electron-builder --win",
+    "build:mac": "NODE_OPTIONS=--max-old-space-size=4096 electron-vite build && NODE_OPTIONS=--max-old-space-size=4096 electron-builder --mac",
+    "build:linux": "NODE_OPTIONS=--max-old-space-size=4096 electron-vite build && NODE_OPTIONS=--max-old-space-size=4096 electron-builder --linux",
+    "build:all": "npm run build && NODE_OPTIONS=--max-old-space-size=4096 electron-builder -mwl"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

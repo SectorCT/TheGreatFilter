@@ -547,3 +547,35 @@ def identify_pollutant(params: list[dict]) -> tuple[str, int, str]:
             best_match = POLLUTANT_MAP[name]
 
     return best_match if best_match is not None else ("Cl", -1, "Chloride ion (default)")
+
+
+def identify_all_pollutants(params: list[dict]) -> list[tuple[str, int, str, float]]:
+    """Return all matched pollutants from *params*, sorted by concentration descending.
+
+    Each entry is ``(atom_symbol, charge, description, value)``.
+    If nothing matches, returns a single Cl⁻ fallback entry.
+    """
+    matches: list[tuple[str, int, str, float]] = []
+    seen_symbols: set[str] = set()
+
+    for p in params:
+        name = str(p.get("name", "")).strip().lower()
+        value = float(p.get("value", 0))
+
+        if name in POLLUTANT_MAP:
+            symbol, charge, desc = POLLUTANT_MAP[name]
+            # Deduplicate by symbol — keep the highest concentration
+            if symbol in seen_symbols:
+                matches = [
+                    (s, c, d, max(v, value) if s == symbol else v)
+                    for s, c, d, v in matches
+                ]
+            else:
+                seen_symbols.add(symbol)
+                matches.append((symbol, charge, desc, value))
+
+    if not matches:
+        return [("Cl", -1, "Chloride ion (default)", 0.0)]
+
+    matches.sort(key=lambda m: m[3], reverse=True)
+    return matches

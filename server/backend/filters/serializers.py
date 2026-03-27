@@ -16,6 +16,7 @@ class GeneratedFilterListSerializer(serializers.ModelSerializer):
     studyId = serializers.UUIDField(source="study.id", read_only=True)
     studyName = serializers.CharField(source="study.name", read_only=True)
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    usedQuantumComputer = serializers.BooleanField(source="used_quantum_computer", read_only=True)
 
     class Meta:
         model = GeneratedFilter
@@ -27,6 +28,7 @@ class GeneratedFilterListSerializer(serializers.ModelSerializer):
             "measurementName",
             "createdAt",
             "status",
+            "usedQuantumComputer",
         ]
 
 
@@ -34,6 +36,9 @@ class GenerateFilterSerializer(serializers.Serializer):
     studyId = serializers.UUIDField()
     measurementId = serializers.UUIDField()
     useQuantumComputer = serializers.BooleanField(required=False, default=False)
+    targetParameterCodes = serializers.ListField(
+        child=serializers.CharField(), required=False, default=list,
+    )
 
     def validate(self, attrs):
         request = self.context["request"]
@@ -56,6 +61,7 @@ class GenerateFilterSerializer(serializers.Serializer):
         attrs["study"] = study
         attrs["measurement"] = measurement
         attrs["use_quantum_computer"] = attrs.get("useQuantumComputer", False)
+        attrs["target_parameter_codes"] = attrs.get("targetParameterCodes", [])
         return attrs
 
     def create(self, validated_data):
@@ -70,6 +76,7 @@ class GenerateFilterSerializer(serializers.Serializer):
                 "studyId": str(validated_data["study"].id),
                 "measurementId": str(validated_data["measurement"].id),
                 "useQuantumComputer": bool(validated_data.get("use_quantum_computer", False)),
+                "targetParameterCodes": validated_data.get("target_parameter_codes", []),
             },
         )
         return generated_filter
@@ -91,6 +98,7 @@ class GeneratedFilterDetailSerializer(serializers.ModelSerializer):
     measurementId = serializers.UUIDField(source="measurement.id", read_only=True)
     measurementName = serializers.CharField(source="measurement.name", read_only=True)
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    usedQuantumComputer = serializers.BooleanField(source="used_quantum_computer", read_only=True)
     filterInfo = serializers.SerializerMethodField()
 
     class Meta:
@@ -102,16 +110,19 @@ class GeneratedFilterDetailSerializer(serializers.ModelSerializer):
             "measurementId",
             "measurementName",
             "status",
+            "usedQuantumComputer",
             "filterInfo",
             "createdAt",
         ]
 
     def get_filterInfo(self, obj):
+        result_payload = obj.result_payload or {}
         return {
             "filterStructure": obj.filter_structure,
             "experimentPayload": obj.experiment_payload,
             "resultPayload": obj.result_payload,
             "summaryMetrics": obj.summary_metrics,
+            "layers": result_payload.get("layers", []),
         }
 
 

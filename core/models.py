@@ -30,6 +30,21 @@ class AtomPosition(BaseModel):
     element: str
 
 
+class LayerInfo(BaseModel):
+    """Per-pollutant layer within a stacked multi-layer filter."""
+    pollutant: str
+    pollutantSymbol: str
+    poreSize: float
+    layerThickness: float
+    latticeSpacing: float
+    materialType: str
+    bindingEnergy: float
+    removalEfficiency: float
+    method: str = "hf"
+    atomPositions: list[AtomPosition] = []
+    connections: list[dict[str, Any]] = []
+
+
 class FilterInfo(BaseModel):
     poreSize: float
     layerThickness: float
@@ -41,10 +56,12 @@ class FilterInfo(BaseModel):
     pollutantSymbol: str
     method: str = "hf"
     executionTarget: str = "simulator"
+    usedQuantumComputer: bool = False
     atomPositions: list[AtomPosition]
     # Each connection: {"from": int, "to": int, "order": int}
     # "from" is a reserved keyword so stored as plain dicts, not a nested model.
     connections: list[dict[str, Any]] = []
+    layers: list[LayerInfo] = []
 
 
 class FilterDetails(BaseModel):

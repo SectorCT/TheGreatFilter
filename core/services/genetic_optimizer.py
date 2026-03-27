@@ -36,7 +36,8 @@ def _init_individual(icls):
     return icls([random.uniform(lo, hi) for lo, hi in GENE_BOUNDS])
 
 
-def _evaluate(individual, pollutant_symbol, pollutant_charge, temperature, ph):
+def _evaluate(individual, pollutant_symbol, pollutant_charge, temperature, ph,
+              use_quantum_computer=False):
     """Fitness function: run VQE and return (abs(binding_energy),)."""
     pore_size = individual[0]
 
@@ -46,6 +47,7 @@ def _evaluate(individual, pollutant_symbol, pollutant_charge, temperature, ph):
         pore_size_nm=pore_size,
         temperature_c=temperature,
         ph=ph,
+        use_quantum_computer=use_quantum_computer,
     )
 
     # Maximize absolute binding energy (stronger binding = better filter)
@@ -67,6 +69,7 @@ def optimize_filter(
     ph: float = 7.0,
     pop_size: int = 8,
     n_gen: int = 3,
+    use_quantum_computer: bool = False,
 ) -> dict:
     """Run genetic algorithm to find optimal filter parameters.
 
@@ -96,6 +99,7 @@ def optimize_filter(
         pollutant_charge=pollutant_charge,
         temperature=temperature,
         ph=ph,
+        use_quantum_computer=use_quantum_computer,
     )
     toolbox.register("mate", tools.cxTwoPoint)
     toolbox.register("mutate", tools.mutGaussian, mu=0, sigma=0.3, indpb=0.3)
@@ -156,6 +160,7 @@ def optimize_filter(
         pore_size_nm=best[0],
         temperature_c=temperature,
         ph=ph,
+        use_quantum_computer=use_quantum_computer,
     )
 
     material_idx = int(round(best[2]))

@@ -36,6 +36,11 @@ VQE_ACTIVE_ELECTRONS = int(os.environ.get("VQE_ACTIVE_ELECTRONS", "4"))
 VQE_ACTIVE_ORBITALS = int(os.environ.get("VQE_ACTIVE_ORBITALS", "4"))
 VQE_MAX_ITERATIONS = int(os.environ.get("VQE_MAX_ITERATIONS", "80"))
 
+# IBM Quantum — set IBM_QUANTUM_TOKEN env var to enable real hardware execution
+IBM_QUANTUM_TOKEN = os.environ.get("IBM_QUANTUM_TOKEN", "")
+IBM_QUANTUM_BACKEND = os.environ.get("IBM_QUANTUM_BACKEND", "ibm_kingston")
+IBM_QUANTUM_SHOTS = int(os.environ.get("IBM_QUANTUM_SHOTS", "1024"))
+
 # Atomic numbers for elements in STO3G_SUPPORTED
 ATOMIC_NUMBERS = {
     "H": 1, "He": 2, "Li": 3, "Be": 4, "B": 5, "C": 6, "N": 7, "O": 8,
@@ -101,17 +106,18 @@ def _isolated_atom_energy(symbol: str, charge: int) -> float:
     return _atom_energy_cache[key]
 
 
-def _isolated_atom_vqe_energy(symbol: str, charge: int) -> float:
+def _isolated_atom_vqe_energy(symbol: str, charge: int,
+                              use_quantum_computer: bool = False) -> float:
     """VQE energy of an isolated atom (cached).
 
     Falls back to HF if VQE fails (e.g. too few orbitals for active space).
     """
-    key = (symbol, charge)
+    key = (symbol, charge, use_quantum_computer)
     if key not in _atom_vqe_cache:
         hf_energy = _isolated_atom_energy(symbol, charge)
         mol = _build_atom_mol(symbol, charge)
         try:
-            vqe_energy = _run_vqe_from_mol(mol)
+            vqe_energy = _run_vqe_from_mol(mol, use_quantum_computer=use_quantum_computer)
             if vqe_energy > hf_energy + 0.01:
                 logger.warning("Atom %s VQE energy %.6f > HF %.6f — using HF",
                                symbol, vqe_energy, hf_energy)
@@ -173,13 +179,16 @@ def _run_system_hf(sim_atom: str, charge: int, distance: float):
 
 # ── VQE via PennyLane ────────────────────────────────────────────────────────
 
-def _run_vqe_from_mol(mol) -> float:
+def _run_vqe_from_mol(mol, use_quantum_computer: bool = False) -> float:
     """Run VQE using PennyLane qchem on a PySCF Mole object.
 
     PennyLane builds the molecular Hamiltonian internally (running its own
     RHF + integral extraction), selects the active space deterministically
     by lowest-energy MO ordering, and maps to qubits via Jordan-Wigner.
     This bypasses the Qiskit ActiveSpaceTransformer entirely.
+
+    When use_quantum_computer=True, runs on IBM Quantum hardware via
+    pennylane-qiskit instead of the local statevector simulator.
 
     Returns total energy in Hartree.
     """
@@ -227,7 +236,25 @@ def _run_vqe_from_mol(mol) -> float:
     if n_params == 0:
         raise ValueError("No excitations available for VQE ansatz")
 
-    dev = qml.device("default.qubit", wires=n_qubits)
+    if use_quantum_computer and IBM_QUANTUM_TOKEN:
+        from qiskit_ibm_runtime import QiskitRuntimeService
+        service = QiskitRuntimeService(
+            channel="ibm_quantum",
+            token=IBM_QUANTUM_TOKEN,
+        )
+        backend = service.backend(IBM_QUANTUM_BACKEND)
+        dev = qml.device(
+            "qiskit.remote",
+            wires=n_qubits,
+            backend=backend,
+            shots=IBM_QUANTUM_SHOTS,
+        )
+        logger.info("VQE: using IBM Quantum backend %s (%d shots)",
+                     IBM_QUANTUM_BACKEND, IBM_QUANTUM_SHOTS)
+    else:
+        dev = qml.device("default.qubit", wires=n_qubits)
+        if use_quantum_computer and not IBM_QUANTUM_TOKEN:
+            logger.warning("use_quantum_computer=True but IBM_QUANTUM_TOKEN not set — falling back to simulator")
 
     @qml.qnode(dev, interface="autograd")
     def cost_fn(params):
@@ -244,11 +271,13 @@ def _run_vqe_from_mol(mol) -> float:
     params = pnp.zeros(n_params, requires_grad=True)
     opt = qml.AdamOptimizer(stepsize=0.02)
 
+    convergence_tol = 1e-3 if use_quantum_computer else 1e-6
+
     energy = float("inf")
     for step in range(VQE_MAX_ITERATIONS):
         params, prev_energy = opt.step_and_cost(cost_fn, params)
         energy = float(cost_fn(params))
-        if step > 0 and abs(energy - float(prev_energy)) < 1e-6:
+        if step > 0 and abs(energy - float(prev_energy)) < convergence_tol:
             logger.info("VQE converged at step %d: %.6f Ha", step, energy)
             break
     else:
@@ -266,6 +295,7 @@ def compute_binding_energy(
     pore_size_nm: float = 0.8,
     temperature_c: float = 25.0,
     ph: float = 7.0,
+    use_quantum_computer: bool = False,
 ) -> dict:
     """Compute binding energy between C and pollutant atom.
 
@@ -296,10 +326,10 @@ def compute_binding_energy(
         if USE_VQE:
             try:
                 logger.info("Running VQE refinement …")
-                e_carbon_vqe = _isolated_atom_vqe_energy("C", 0)
-                e_pollutant_vqe = _isolated_atom_vqe_energy(sim_atom, pollutant_charge)
+                e_carbon_vqe = _isolated_atom_vqe_energy("C", 0, use_quantum_computer=use_quantum_computer)
+                e_pollutant_vqe = _isolated_atom_vqe_energy(sim_atom, pollutant_charge, use_quantum_computer=use_quantum_computer)
                 sys_mol = _build_system_mol(sim_atom, pollutant_charge, distance)
-                e_system_vqe = _run_vqe_from_mol(sys_mol)
+                e_system_vqe = _run_vqe_from_mol(sys_mol, use_quantum_computer=use_quantum_computer)
 
                 binding_vqe = (e_system_vqe - e_carbon_vqe - e_pollutant_vqe) * HARTREE_TO_EV
                 logger.info("VQE binding: %.4f eV (HF was %.4f eV, Δ=%.4f eV)",
@@ -310,7 +340,7 @@ def compute_binding_energy(
                     "binding_energy": round(binding_vqe, 6),
                     "removal_efficiency": round(removal_eff, 2),
                     "converged": True,
-                    "method": "vqe",
+                    "method": "vqe_ibm" if use_quantum_computer else "vqe",
                     "hf_binding_energy": round(binding_hf, 6),
                     "active_space": f"{VQE_ACTIVE_ELECTRONS}e,{VQE_ACTIVE_ORBITALS}o",
                 }

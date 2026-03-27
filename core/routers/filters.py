@@ -173,57 +173,145 @@ def run_generation(filter_id: str, measurement_id: str, measurement_data: dict) 
         ph = float(measurement_data.get("ph", 7.0))
         use_quantum_computer = bool(measurement_data.get("use_quantum_computer", False))
 
-        # Identify pollutant
-        from services.pollutant_map import identify_pollutant
-        pollutant_symbol, pollutant_charge, pollutant_desc = identify_pollutant(params)
-        log.info("[%s] Pollutant identified: %s (%s), charge=%d",
-                 filter_id[:8], pollutant_symbol, pollutant_desc, pollutant_charge)
+        # Identify all target pollutants (sorted by concentration)
+        from services.pollutant_map import identify_all_pollutants
+        pollutants = identify_all_pollutants(params)
+        log.info("[%s] Identified %d pollutant(s): %s",
+                 filter_id[:8], len(pollutants),
+                 [(s, d) for s, _, d, _ in pollutants])
 
-        # Run genetic optimizer
         execution_target = "ibm_quantum" if use_quantum_computer else "simulator"
-        log.info("[%s] Starting genetic optimizer (pop=8, gen=3)… target=%s", filter_id[:8], execution_target)
         from services.genetic_optimizer import optimize_filter
-        result = optimize_filter(
-            pollutant_symbol=pollutant_symbol,
-            pollutant_charge=pollutant_charge,
-            temperature=temperature,
-            ph=ph,
-        )
-        log.info("[%s] GA complete — pore=%.4f nm, thickness=%.4f nm, "
-                 "binding=%.6f eV, efficiency=%.2f%%, method=%s",
-                 filter_id[:8], result["pore_size"], result["layer_thickness"],
-                 result["binding_energy"], result["removal_efficiency"],
-                 result["method"])
 
-        # Generate atom positions and bonds for 3D visualization
-        atom_positions, connections = generate_atom_positions(
-            lattice_spacing=result["lattice_spacing"],
-            material_type=result["material_type"],
-            pollutant_symbol=pollutant_symbol,
-            functionalization_density=result.get("functionalization_density", 0.6),
-            doping_level=result.get("doping_level", 0.15),
+        # ── Generate one layer per pollutant ──────────────────────────────
+        layers = []
+        all_atoms: list[dict] = []
+        all_connections: list[tuple] = []
+        z_offset = 0.0
+        # Gap between stacked layers (Å) — van der Waals spacing
+        _INTERLAYER_GAP = 3.4
+
+        for layer_idx, (p_symbol, p_charge, p_desc, p_value) in enumerate(pollutants):
+            log.info("[%s] Layer %d/%d: optimizing for %s (%s)",
+                     filter_id[:8], layer_idx + 1, len(pollutants), p_symbol, p_desc)
+
+            result = optimize_filter(
+                pollutant_symbol=p_symbol,
+                pollutant_charge=p_charge,
+                temperature=temperature,
+                ph=ph,
+                use_quantum_computer=use_quantum_computer,
+            )
+            log.info("[%s] Layer %d GA complete — pore=%.4f nm, thickness=%.4f nm, "
+                     "binding=%.6f eV, efficiency=%.2f%%, method=%s",
+                     filter_id[:8], layer_idx + 1,
+                     result["pore_size"], result["layer_thickness"],
+                     result["binding_energy"], result["removal_efficiency"],
+                     result["method"])
+
+            atom_positions, connections = generate_atom_positions(
+                lattice_spacing=result["lattice_spacing"],
+                material_type=result["material_type"],
+                pollutant_symbol=p_symbol,
+                functionalization_density=result.get("functionalization_density", 0.6),
+                doping_level=result.get("doping_level", 0.15),
+            )
+
+            # Offset atom z-coordinates and re-index ids for stacking
+            id_offset = len(all_atoms)
+            for atom in atom_positions:
+                all_atoms.append({
+                    "id": atom["id"] + id_offset,
+                    "x": atom["x"],
+                    "y": atom["y"],
+                    "z": atom["z"] + z_offset,
+                    "element": atom["element"],
+                })
+            for conn in connections:
+                all_connections.append((
+                    conn["from"] + id_offset,
+                    conn["to"] + id_offset,
+                    conn.get("order", 1),
+                ))
+
+            # Compute z extent of this layer for the next offset
+            if atom_positions:
+                max_z = max(a["z"] for a in atom_positions)
+            else:
+                max_z = result["layer_thickness"] * 10  # nm → Å
+            z_offset += max_z + _INTERLAYER_GAP
+
+            layers.append({
+                "pollutant": p_desc,
+                "pollutantSymbol": p_symbol,
+                "poreSize": result["pore_size"],
+                "layerThickness": result["layer_thickness"],
+                "latticeSpacing": result["lattice_spacing"],
+                "materialType": result["material_type"],
+                "bindingEnergy": result["binding_energy"],
+                "removalEfficiency": result["removal_efficiency"],
+                "method": result.get("method", "hf"),
+                "atomPositions": [
+                    a for a in all_atoms[id_offset:]
+                ],
+                "connections": [
+                    {"from": f, "to": t, "order": o}
+                    for f, t, o in all_connections[len(all_connections) - len(connections):]
+                ],
+            })
+
+        # ── Aggregate metrics from all layers ─────────────────────────────
+        # Primary layer = first (highest concentration) for top-level fields
+        primary = layers[0]
+
+        # Combined removal efficiency: 1 - product(1 - eff_i/100) for each layer
+        combined_efficiency = 1.0
+        for layer in layers:
+            combined_efficiency *= (1.0 - layer["removalEfficiency"] / 100.0)
+        combined_efficiency = round((1.0 - combined_efficiency) * 100.0, 2)
+
+        # Average binding energy across layers
+        avg_binding = round(
+            sum(l["bindingEnergy"] for l in layers) / len(layers), 6
         )
+
+        # Determine overall method — if any layer used vqe_ibm, flag it
+        methods = [l["method"] for l in layers]
+        overall_method = "vqe_ibm" if "vqe_ibm" in methods else (
+            "vqe" if "vqe" in methods else "hf"
+        )
+
+        # Total layer thickness = sum of individual thicknesses
+        total_thickness = round(sum(l["layerThickness"] for l in layers), 4)
+
+        stacked_connections = [
+            {"from": f, "to": t, "order": o}
+            for f, t, o in sorted(all_connections)
+        ]
 
         filter_info = {
-            "poreSize": result["pore_size"],
-            "layerThickness": result["layer_thickness"],
-            "latticeSpacing": result["lattice_spacing"],
-            "materialType": result["material_type"],
-            "bindingEnergy": result["binding_energy"],
-            "removalEfficiency": result["removal_efficiency"],
-            "pollutant": pollutant_desc,
-            "pollutantSymbol": pollutant_symbol,
-            "method": result.get("method", "hf"),
+            "poreSize": primary["poreSize"],
+            "layerThickness": total_thickness,
+            "latticeSpacing": primary["latticeSpacing"],
+            "materialType": primary["materialType"],
+            "bindingEnergy": avg_binding,
+            "removalEfficiency": combined_efficiency,
+            "pollutant": primary["pollutant"],
+            "pollutantSymbol": primary["pollutantSymbol"],
+            "method": overall_method,
             "executionTarget": execution_target,
-            "atomPositions": atom_positions,
-            "connections": connections,
+            "usedQuantumComputer": overall_method == "vqe_ibm",
+            "atomPositions": all_atoms,
+            "connections": stacked_connections,
+            "layers": layers,
         }
 
         sync_update_filter_status(
             filter_id, "Success", now(),
             filter_info=json.dumps(filter_info),
         )
-        log.info("[%s] Generation SUCCESS", filter_id[:8])
+        log.info("[%s] Generation SUCCESS — %d layer(s), combined efficiency=%.2f%%",
+                 filter_id[:8], len(layers), combined_efficiency)
 
     except Exception as e:
         log.error("[%s] Generation FAILED: %s", filter_id[:8], e, exc_info=True)
