@@ -14,9 +14,9 @@ def _core_url() -> str:
 
 
 def _build_params(measurement) -> list[dict]:
-    """Convert WaterMeasurement.parameters_data → core MeasurementParam list."""
+    """Convert WaterMeasurement.pollutants_data → core MeasurementParam list."""
     params = []
-    for code, data in (measurement.parameters_data or {}).items():
+    for code, data in (measurement.pollutants_data or {}).items():
         try:
             params.append(
                 {
