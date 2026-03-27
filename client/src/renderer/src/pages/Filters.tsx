@@ -1,5 +1,6 @@
-import { ArrowRight, Cpu, FlaskConical } from 'lucide-react'
+import { ArrowRight, FlaskConical, Upload } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { useNavigate } from 'react-router-dom'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
 import { StatusBadge } from '@renderer/components/StatusBadge'
@@ -19,6 +20,7 @@ const resolveStudies = (payload: StudyListResponse): Study[] => {
 
 export function Filters(): React.JSX.Element {
   const navigate = useNavigate()
+  const jsonInputRef = useRef<HTMLInputElement | null>(null)
   const [items, setItems] = useState<FilterListItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -135,6 +137,23 @@ export function Filters(): React.JSX.Element {
     return items.filter((item) => item.studyId === studyFilterId)
   }, [items, studyFilterId])
 
+  const handlePickJsonForVisualization = async (file: File): Promise<void> => {
+    try {
+      const text = await file.text()
+      const parsed = JSON.parse(text) as unknown
+      navigate('/filters/visualize', {
+        state: {
+          uploadedFilterJson: parsed,
+          uploadedFileName: file.name,
+        },
+      })
+    } catch (parseError) {
+      const message =
+        parseError instanceof Error ? parseError.message : 'Failed to parse JSON file.'
+      toast.error(message)
+    }
+  }
+
   return (
     <div className="p-4 md:p-6 lg:p-8">
       <Breadcrumbs />
@@ -144,6 +163,18 @@ export function Filters(): React.JSX.Element {
           <p className="text-sm text-muted-foreground">{total} generated filters</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <input
+            ref={jsonInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (!file) return
+              void handlePickJsonForVisualization(file)
+              event.target.value = ''
+            }}
+          />
           <select
             value={studyFilterId}
             onChange={(e) => setStudyFilterId(e.target.value)}
@@ -161,6 +192,14 @@ export function Filters(): React.JSX.Element {
           <Button onClick={() => navigate('/filters/new')} className="shrink-0">
             <FlaskConical size={16} strokeWidth={1.5} />
             New Filter
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => jsonInputRef.current?.click()}
+            className="shrink-0"
+          >
+            <Upload size={16} strokeWidth={1.5} />
+            Visualize JSON
           </Button>
         </div>
       </div>
@@ -211,14 +250,7 @@ export function Filters(): React.JSX.Element {
                   }`}
                 >
                   <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{item.filterId}</td>
-                  <td className="px-4 py-3 font-medium">
-                    <span className="inline-flex items-center gap-1.5">
-                      <span>Filter {item.filterId.slice(0, 8)}</span>
-                      {item.useQuantumComputer === true ? (
-                        <Cpu size={14} strokeWidth={1.7} className="text-violet-600" aria-label="Quantum computer" />
-                      ) : null}
-                    </span>
-                  </td>
+                  <td className="px-4 py-3 font-medium">Filter {item.filterId.slice(0, 8)}</td>
                   <td className="px-4 py-3 font-mono text-xs">
                     {studyNameById.get(item.studyId) ?? item.studyId.slice(0, 8)}
                   </td>
