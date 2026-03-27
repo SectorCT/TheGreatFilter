@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 
 import SiteShell from './components/SiteShell'
-import { APP_NAME, DOWNLOAD_URL, TAGLINE } from './lib/constants'
+import { APP_NAME, LINUX_DOWNLOAD_URL, TAGLINE } from './lib/constants'
 
 function DownloadIcon(props) {
   return (
@@ -55,13 +55,13 @@ export default function LandingPage() {
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
               <a
-                href={DOWNLOAD_URL}
+                href={LINUX_DOWNLOAD_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center justify-center gap-3 rounded-[6px] bg-primary px-10 py-5 text-lg font-medium text-primary-foreground transition-all duration-150 hover:bg-primary/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <DownloadIcon className="h-5 w-5" />
-                Download for Desktop
+                Download for Linux
               </a>
 
               <Link
@@ -130,12 +130,12 @@ export default function LandingPage() {
                   </div>
                 </div>
                 <a
-                  href={DOWNLOAD_URL}
+                  href={LINUX_DOWNLOAD_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center justify-center rounded-[6px] bg-primary px-5 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/85"
                 >
-                  Download
+                  Download Linux
                 </a>
               </div>
             </div>
