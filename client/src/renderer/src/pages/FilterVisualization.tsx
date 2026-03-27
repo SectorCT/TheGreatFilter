@@ -148,6 +148,13 @@ const normalizeImportedFilterInfo = (payload: unknown): FilterInfo => {
 
 const BASE_ELEMENTS = ['C', 'N', 'O', 'S', 'H'] as const
 const BASE_STYLE = { stick: { radius: 0.06 }, sphere: { scale: 0.15 } }
+const ELEMENT_LABELS: Record<string, string> = {
+  C: 'Carbon (black)',
+  O: 'Oxygen (red)',
+  N: 'Nitrogen (blue)',
+  S: 'Sulfur (yellow)',
+  H: 'Hydrogen (white)'
+}
 
 function randomFrom<T>(values: readonly T[]): T {
   return values[Math.floor(Math.random() * values.length)]
@@ -298,7 +305,7 @@ export function FilterVisualization(): React.JSX.Element {
     if (viewerRef.current) {
       viewerRef.current.setStyle({}, BASE_STYLE)
       ;(viewerRef.current as unknown as { setColorByElement?: (sel: object, colors: Record<string, string>) => void })
-        .setColorByElement?.({}, { C: '#111111' })
+        .setColorByElement?.({}, { C: '#424242' })
     }
     viewerRef.current?.removeAllLabels()
     viewerRef.current?.render()
@@ -320,7 +327,7 @@ export function FilterVisualization(): React.JSX.Element {
     }
     viewer.setStyle({}, BASE_STYLE)
     ;(viewer as unknown as { setColorByElement?: (sel: object, colors: Record<string, string>) => void })
-      .setColorByElement?.({}, { C: '#111111' })
+      .setColorByElement?.({}, { C: '#424242' })
     viewer.setClickable({}, true, (atom: ClickableAtom) => {
       lastAtomClickRef.current = Date.now()
       const atomIndex = typeof atom?.serial === 'number' ? atom.serial : (atom?.index ?? '?')
@@ -337,21 +344,21 @@ export function FilterVisualization(): React.JSX.Element {
       viewer.removeAllLabels()
       viewer.setStyle({}, BASE_STYLE)
       ;(viewer as unknown as { setColorByElement?: (sel: object, colors: Record<string, string>) => void })
-        .setColorByElement?.({}, { C: '#111111' })
+        .setColorByElement?.({}, { C: '#424242' })
       if (typeof atom?.serial === 'number') {
         viewer.setStyle(
           { serial: atom.serial },
           {
-            sphere: { scale: 0.34, color: '#f43f5e' },
-            stick: { radius: 0.12, color: '#fb7185' }
+            sphere: { scale: 0.34 },
+            stick: { radius: 0.12 }
           }
         )
       } else if (typeof atom?.index === 'number') {
         viewer.setStyle(
           { index: atom.index },
           {
-            sphere: { scale: 0.34, color: '#f43f5e' },
-            stick: { radius: 0.12, color: '#fb7185' }
+            sphere: { scale: 0.34 },
+            stick: { radius: 0.12 }
           }
         )
       }
@@ -359,8 +366,8 @@ export function FilterVisualization(): React.JSX.Element {
         viewer.setStyle(
           { index: atom.bonds as number[] },
           {
-            sphere: { scale: 0.21, color: '#22d3ee' },
-            stick: { radius: 0.09, color: '#06b6d4' }
+            sphere: { scale: 0.21 },
+            stick: { radius: 0.09 }
           }
         )
       }
@@ -503,21 +510,16 @@ export function FilterVisualization(): React.JSX.Element {
         <aside className="min-h-0 overflow-y-auto rounded-[8px] border border-border bg-card p-4">
           <h2 className="mb-3 text-sm font-semibold">Legend</h2>
           <div className="space-y-2 text-sm">
-            <p className="text-muted-foreground">
-              <span className="font-medium text-foreground">C</span> Carbon (black)
-            </p>
-            <p className="text-muted-foreground">
-              <span className="font-medium text-foreground">O</span> Oxygen (red)
-            </p>
-            <p className="text-muted-foreground">
-              <span className="font-medium text-foreground">N</span> Nitrogen (blue)
-            </p>
-            <p className="text-muted-foreground">
-              <span className="font-medium text-foreground">S</span> Sulfur (yellow)
-            </p>
-            <p className="text-muted-foreground">
-              <span className="font-medium text-foreground">H</span> Hydrogen (white)
-            </p>
+            {elementCounts.length > 0 ? (
+              elementCounts.map(([element]) => (
+                <p key={`legend-${element}`} className="text-muted-foreground">
+                  <span className="font-medium text-foreground">{element}</span>{' '}
+                  {ELEMENT_LABELS[element] ?? 'Element'}
+                </p>
+              ))
+            ) : (
+              <p className="text-muted-foreground">No elements available.</p>
+            )}
           </div>
 
           <div className="my-4 border-t border-border" />
