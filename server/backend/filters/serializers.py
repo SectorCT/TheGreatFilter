@@ -33,6 +33,7 @@ class GeneratedFilterListSerializer(serializers.ModelSerializer):
 class GenerateFilterSerializer(serializers.Serializer):
     studyId = serializers.UUIDField()
     measurementId = serializers.UUIDField()
+    useQuantumComputer = serializers.BooleanField(required=False, default=False)
 
     def validate(self, attrs):
         request = self.context["request"]
@@ -54,6 +55,7 @@ class GenerateFilterSerializer(serializers.Serializer):
 
         attrs["study"] = study
         attrs["measurement"] = measurement
+        attrs["use_quantum_computer"] = attrs.get("useQuantumComputer", False)
         return attrs
 
     def create(self, validated_data):
@@ -67,6 +69,7 @@ class GenerateFilterSerializer(serializers.Serializer):
             experiment_payload={
                 "studyId": str(validated_data["study"].id),
                 "measurementId": str(validated_data["measurement"].id),
+                "useQuantumComputer": bool(validated_data.get("use_quantum_computer", False)),
             },
         )
         return generated_filter

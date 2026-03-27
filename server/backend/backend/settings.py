@@ -8,11 +8,19 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv("SECRET_KEY", "development-secret-key")
-
 DEBUG = os.getenv("DEBUG", "True").lower() == "true"
+SECRET_KEY = os.getenv("SECRET_KEY", "")
 
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "*").split(",")
+if DEBUG:
+    # Convenience fallback for local dev only.
+    SECRET_KEY = SECRET_KEY or "development-only-secret-key-change-me"
+else:
+    if not SECRET_KEY:
+        raise RuntimeError("SECRET_KEY must be set when DEBUG=False.")
+    if len(SECRET_KEY) < 32:
+        raise RuntimeError("SECRET_KEY must be at least 32 characters when DEBUG=False.")
+
+ALLOWED_HOSTS = [host.strip() for host in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -156,7 +164,7 @@ CELERY_TASK_ROUTES = {
     "filters.tasks.generate_filter": {"queue": "simulation"},
 }
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = os.getenv("CORS_ALLOW_ALL_ORIGINS", "True").lower() == "true"
 
 # Core simulation service
 CORE_SERVICE_URL = os.getenv("CORE_SERVICE_URL", "http://core:8000")

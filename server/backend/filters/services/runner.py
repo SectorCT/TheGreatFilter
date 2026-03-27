@@ -40,6 +40,7 @@ def run_filter_generation(generated_filter) -> dict:
     """
     measurement = generated_filter.measurement
     base = _core_url()
+    use_quantum_computer = bool((generated_filter.experiment_payload or {}).get("useQuantumComputer", False))
 
     # ── 1. Submit generation request ──────────────────────────────────────
     payload = {
@@ -47,6 +48,7 @@ def run_filter_generation(generated_filter) -> dict:
         "temperature": measurement.temperature if measurement.temperature is not None else 25.0,
         "ph": measurement.ph if measurement.ph is not None else 7.0,
         "params": _build_params(measurement),
+        "useQuantumComputer": use_quantum_computer,
     }
 
     try:
@@ -120,6 +122,7 @@ def run_filter_generation(generated_filter) -> dict:
             "measurement_id": str(generated_filter.measurement_id),
             "study_id": str(generated_filter.study_id),
             "core_filter_id": core_filter_id,
+            "useQuantumComputer": use_quantum_computer,
             "temperature": measurement.temperature,
             "ph": measurement.ph,
             "params": _build_params(measurement),
@@ -143,6 +146,7 @@ def run_filter_generation(generated_filter) -> dict:
             "rows": [
                 {"key": k, "value": str(v)}
                 for k, v in {
+                    "useQuantumComputer": use_quantum_computer,
                     "poreSize": info.get("poreSize"),
                     "layerThickness": info.get("layerThickness"),
                     "materialType": info.get("materialType"),
