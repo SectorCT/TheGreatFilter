@@ -30,20 +30,7 @@ export const login = async (request: LoginRequest): Promise<AuthResponse> => {
     body: request,
     authRequired: false,
     parseResponse: parseAuthResponse,
-    fake404: () => ({
-      token: 'fake-dev-access-token',
-      refreshToken: 'fake-dev-refresh-token',
-      user: {
-        userId: 1,
-        username: 'fake-user',
-        email: request.email,
-        full_name: 'Fake User',
-        organization_name: '',
-        role_title: '',
-        country: '',
-        dateJoined: new Date().toISOString()
-      }
-    })
+    suppressErrorToast: true,
   })
 
   setAccessToken(response.token)
@@ -58,20 +45,7 @@ export const signup = async (request: SignupRequest): Promise<AuthResponse> => {
     body: request,
     authRequired: false,
     parseResponse: parseAuthResponse,
-    fake404: () => ({
-      token: 'fake-dev-access-token',
-      refreshToken: 'fake-dev-refresh-token',
-      user: {
-        userId: 1,
-        username: 'fake-user',
-        email: request.email,
-        full_name: request.full_name ?? '',
-        organization_name: request.organization_name ?? '',
-        role_title: request.role_title ?? '',
-        country: request.country ?? '',
-        dateJoined: new Date().toISOString()
-      }
-    })
+    suppressErrorToast: true,
   })
 
   setAccessToken(response.token)
@@ -85,7 +59,6 @@ export const logout = async (): Promise<void> => {
     path: '/api/auth/logout/',
     body: { refresh: refresh ?? '' },
     authRequired: true,
-    fake404: { success: true }
   })
   clearAccessToken()
 }

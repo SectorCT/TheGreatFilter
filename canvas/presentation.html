@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>H2O-Sim</title>
+<title>Qlean</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg==" crossorigin="anonymous" referrerpolicy="no-referrer">
@@ -55,7 +55,7 @@ html, body {
   background: var(--bg);
   overflow: hidden;
   display: grid;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: 1fr;
 }
 
 /* dot-grid background */
@@ -90,6 +90,7 @@ html, body {
   border-top: 1px solid var(--border);
   background: var(--bg-card);
   padding: 8px 16px;
+  display: none;
 }
 .nav button {
   background: transparent;
@@ -102,10 +103,10 @@ html, body {
 .nav button:disabled { opacity: 0.3; cursor: default; }
 .dots { display: flex; gap: 6px; align-items: center; }
 .dot {
-  width: 5px; height: 5px; border-radius: 50%;
+  width: 3px; height: 3px; border-radius: 50%;
   background: var(--border); cursor: pointer; transition: all 0.15s;
 }
-.dot.on { background: var(--slate); width: 16px; border-radius: 3px; }
+.dot.on { background: var(--slate); width: 8px; border-radius: 3px; }
 
 /* ── COUNTER ── */
 .counter {
@@ -157,12 +158,12 @@ html, body {
   font-size: 0.6em; vertical-align: baseline; letter-spacing: -1px;
 }
 #s1 .desc {
-  font-size: clamp(12px, 1.3vw, 15px); color: var(--muted);
+  font-size: clamp(21px, 2.25vw, 27px); color: var(--muted);
   line-height: 1.65; max-width: 400px; font-weight: 300;
 }
 #s1 .desc strong { color: var(--text); font-weight: 500; }
 #s1 .byline {
-  margin-top: 6%; font-family: var(--mono); font-size: 12px;
+  margin-top: 6%; font-family: var(--mono); font-size: 24px;
   color: var(--faint); letter-spacing: 0.9px; text-transform: uppercase;
 }
 #s1 .right {
@@ -172,35 +173,20 @@ html, body {
 .water-particles {
   position: relative;
   width: 100%;
-  max-width: 360px;
-  height: 280px;
-  border: 1px solid var(--border-sub);
-  border-radius: 6px;
-  background: linear-gradient(180deg, rgba(58,143,181,0.04), rgba(58,143,181,0.01));
+  max-width: 430px;
+  height: 330px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   overflow: hidden;
 }
-.wp {
+.molecule-svg {
   position: absolute;
-  border-radius: 50%;
-  background: var(--blue);
-  opacity: 0.16;
-  animation: floatUp linear infinite;
-}
-.wp:nth-child(1) { width: 12px; height: 12px; left: 8%;  bottom: -20px; animation-duration: 8s; }
-.wp:nth-child(2) { width: 7px;  height: 7px;  left: 22%; bottom: -14px; animation-duration: 6s; animation-delay: 1s; }
-.wp:nth-child(3) { width: 10px; height: 10px; left: 35%; bottom: -24px; animation-duration: 7.5s; animation-delay: 0.7s; }
-.wp:nth-child(4) { width: 6px;  height: 6px;  left: 48%; bottom: -10px; animation-duration: 5.5s; animation-delay: 1.4s; }
-.wp:nth-child(5) { width: 11px; height: 11px; left: 61%; bottom: -18px; animation-duration: 8.3s; animation-delay: 0.6s; }
-.wp:nth-child(6) { width: 8px;  height: 8px;  left: 74%; bottom: -16px; animation-duration: 6.8s; animation-delay: 1.9s; }
-.wp:nth-child(7) { width: 5px;  height: 5px;  left: 87%; bottom: -12px; animation-duration: 4.9s; animation-delay: 1.1s; }
-.wp:nth-child(8) { width: 9px;  height: 9px;  left: 15%; bottom: -18px; animation-duration: 7.2s; animation-delay: 2.4s; }
-.wp:nth-child(9) { width: 6px;  height: 6px;  left: 55%; bottom: -10px; animation-duration: 5.7s; animation-delay: 2.1s; }
-.wp:nth-child(10){ width: 13px; height: 13px; left: 79%; bottom: -22px; animation-duration: 9s;   animation-delay: 0.5s; }
-@keyframes floatUp {
-  0%   { transform: translateY(0) scale(0.9); opacity: 0; }
-  15%  { opacity: 0.14; }
-  85%  { opacity: 0.18; }
-  100% { transform: translateY(-320px) scale(1.1); opacity: 0; }
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  opacity: 0.92;
 }
 
 /* ═══════════════════════════
@@ -219,12 +205,12 @@ html, body {
 }
 #s2 .lft { grid-area: lft; display: flex; flex-direction: column; gap: 16px; justify-content: center; }
 #s2 .bignum {
-  font-family: var(--mono); font-size: clamp(44px, 6.5vw, 84px);
+  font-family: var(--mono); font-size: clamp(52px, 7.2vw, 98px);
   font-weight: 600; line-height: 1; letter-spacing: -2px;
   color: var(--amber);
 }
 #s2 .bignumlabel {
-  font-family: var(--mono); font-size: clamp(12px, 1.2vw, 14px);
+  font-family: var(--mono); font-size: clamp(18px, 1.8vw, 21px);
   color: var(--muted); margin-top: 4px; letter-spacing: 0.4px;
 }
 .callout {
@@ -232,22 +218,22 @@ html, body {
   border-left: 2px solid var(--amber);
   background: var(--amber-bg);
   border-radius: 0 6px 6px 0;
-  font-size: clamp(12px, 1.08vw, 13px);
+  font-size: clamp(18px, 1.58vw, 19.5px);
   color: var(--muted); line-height: 1.6;
 }
 .callout strong { color: var(--amber); font-weight: 500; }
 #s2 .rgt { grid-area: rgt; display: flex; flex-direction: column; gap: 10px; justify-content: center; }
 .ptag-group { display: flex; flex-wrap: wrap; gap: 6px; }
 .ptag {
-  font-family: var(--mono); font-size: clamp(11px, 1.05vw, 13px);
-  padding: 4px 10px; border-radius: 4px; border: 1px solid;
+  font-family: var(--mono); font-size: clamp(18px, 1.7vw, 24px);
+  padding: 5px 12px; border-radius: 4px; border: 1px solid;
   letter-spacing: 0.3px;
 }
 .ptag-a { border-color: var(--amber-border); color: var(--amber); background: var(--amber-bg); }
 .ptag-b { border-color: var(--blue-border);  color: var(--blue);  background: var(--blue-bg);  }
 .ptag-c { border-color: var(--border);       color: var(--muted); background: var(--bg-card);  }
 .ptag-group-label {
-  font-family: var(--mono); font-size: 12px; letter-spacing: 0.9px;
+  font-family: var(--mono); font-size: clamp(14px, 1.25vw, 18px); letter-spacing: 1px;
   text-transform: uppercase; color: var(--faint); margin-bottom: 4px;
 }
 
@@ -266,7 +252,7 @@ html, body {
 }
 .flow-step {
   flex: 1; display: flex; align-items: center; justify-content: center;
-  font-family: var(--mono); font-size: clamp(11px, 1vw, 12px);
+  font-family: var(--mono); font-size: clamp(11px, 0.95vw, 12px);
   letter-spacing: 0.3px; text-transform: uppercase; color: var(--muted);
   border-right: 1px solid var(--border); background: var(--bg-card);
   position: relative; transition: background 0.15s;
@@ -282,11 +268,11 @@ html, body {
   border-radius: 6px; background: var(--bg-card);
   display: flex; flex-direction: column; gap: 5px;
 }
-.sol-card .sc-icon { font-size: clamp(17px, 2.2vw, 22px); color: var(--text); }
-.sol-card h3 { font-size: clamp(12px, 1.15vw, 14px); font-weight: 600; color: var(--text); }
-.sol-card p  { font-size: clamp(11px, 1.05vw, 13px); color: var(--muted); line-height: 1.5; }
+.sol-card .sc-icon { font-size: clamp(18px, 2.1vw, 24px); color: var(--text); }
+.sol-card h3 { font-size: clamp(18px, 1.73vw, 21px); font-weight: 600; color: var(--text); }
+.sol-card p  { font-size: clamp(16.5px, 1.53vw, 18px); color: var(--muted); line-height: 1.5; }
 .sol-card .sc-tag {
-  font-family: var(--mono); font-size: clamp(11px, 1vw, 12px);
+  font-family: var(--mono); font-size: clamp(10px, 0.9vw, 11px);
   width: fit-content; padding: 2px 7px; border-radius: 3px; margin-top: 2px;
   border: 1px solid var(--border); color: var(--faint); letter-spacing: 0.3px;
 }
@@ -303,12 +289,12 @@ html, body {
   font-size: clamp(24px, 3vw, 42px); font-weight: 600; letter-spacing: -0.5px;
 }
 .pipeline {
-  display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; height: 100%;
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; height: 100%;
 }
 .pipe-step {
   display: flex; flex-direction: column;
   border: 1px solid var(--border-sub); border-radius: 6px;
-  padding: 5% 6%; background: var(--bg-card);
+  padding: 4% 5%; background: var(--bg-card);
   position: relative; gap: 6px;
 }
 .pipe-step::after {
@@ -321,11 +307,11 @@ html, body {
   font-family: var(--mono); font-size: clamp(22px, 3vw, 38px);
   font-weight: 600; line-height: 1; color: var(--border); letter-spacing: -1px;
 }
-.ps-icon { font-size: clamp(17px, 2.2vw, 24px); margin: 2% 0; color: var(--text); }
-.ps-title { font-size: clamp(12px, 1.1vw, 13px); font-weight: 600; color: var(--text); line-height: 1.3; }
-.ps-desc  { font-size: clamp(11px, 1vw, 13px);  color: var(--muted); line-height: 1.4; flex: 1; }
+.ps-icon { font-size: clamp(18px, 2.2vw, 24px); margin: 2% 0; color: var(--text); }
+.ps-title { font-size: clamp(16.5px, 1.5vw, 18px); font-weight: 600; color: var(--text); line-height: 1.3; }
+.ps-desc  { font-size: clamp(15px, 1.38vw, 16.5px);  color: var(--muted); line-height: 1.4; flex: 1; }
 .ps-badge {
-  font-family: var(--mono); font-size: clamp(11px, 1vw, 12px);
+  font-family: var(--mono); font-size: clamp(9px, 0.84vw, 10px);
   padding: 2px 7px; border-radius: 3px; width: fit-content; letter-spacing: 0.3px;
   border: 1px solid var(--border); color: var(--muted); background: var(--bg-mute);
 }
@@ -361,19 +347,19 @@ html, body {
 }
 .d-num.dn-b { border-color: var(--blue-border);  color: var(--blue);  background: var(--blue-bg);  }
 .d-num.dn-g { border-color: var(--green-border); color: var(--green); background: var(--green-bg); }
-.d-title { font-size: clamp(12px, 1.1vw, 13px); font-weight: 500; color: var(--text); margin-bottom: 1px; }
-.d-sub   { font-size: clamp(11px, 0.98vw, 12px); color: var(--muted); font-family: var(--mono); letter-spacing: 0.1px; }
+.d-title { font-size: clamp(16.5px, 1.5vw, 18px); font-weight: 500; color: var(--text); margin-bottom: 1px; }
+.d-sub   { font-size: clamp(15px, 1.32vw, 16.5px); color: var(--muted); font-family: var(--mono); letter-spacing: 0.1px; }
 #s5 .mtr { grid-area: mtr; display: flex; flex-direction: column; gap: 6px; }
 .metric {
   padding: 10px 12px; border: 1px solid var(--border-sub);
   border-radius: 6px; background: var(--bg-card);
 }
 .metric .mv {
-  font-family: var(--mono); font-size: clamp(20px, 2.6vw, 30px);
+  font-family: var(--mono); font-size: clamp(22px, 2.7vw, 34px);
   font-weight: 600; line-height: 1; letter-spacing: -1px;
 }
 .metric .ml {
-  font-family: var(--mono); font-size: 11px; color: var(--faint);
+  font-family: var(--mono); font-size: 10px; color: var(--faint);
   letter-spacing: 0.8px; text-transform: uppercase; margin-top: 3px;
 }
 .metric.m-b { border-top: 2px solid var(--blue);  }
@@ -402,14 +388,14 @@ html, body {
   display: flex; flex-direction: column; gap: 8px;
 }
 .tech-box .tb-label {
-  font-family: var(--mono); font-size: clamp(11px, 1.02vw, 13px);
+  font-family: var(--mono); font-size: clamp(18px, 1.7vw, 24px);
   letter-spacing: 1px; text-transform: uppercase; color: var(--muted);
   border-bottom: 1px solid var(--border-sub); padding-bottom: 6px;
 }
 .tb-tags { display: flex; flex-wrap: wrap; gap: 5px; }
 .tb-tag {
-  font-family: var(--mono); font-size: clamp(11px, 0.98vw, 12px);
-  padding: 2px 7px; border-radius: 3px;
+  font-family: var(--mono); font-size: clamp(15px, 1.35vw, 20px);
+  padding: 3px 8px; border-radius: 3px;
   border: 1px solid var(--border); color: var(--text);
   background: var(--bg);
 }
@@ -435,9 +421,9 @@ html, body {
 .imp-a::before { background: var(--amber); }
 .imp-g::before { background: var(--green); }
 .imp-s::before { background: var(--slate); }
-.imp-card .ic-icon { font-size: clamp(18px, 2.5vw, 26px); color: var(--text); }
-.imp-card h3 { font-size: clamp(12px, 1.3vw, 15px); font-weight: 600; color: var(--text); }
-.imp-card p  { font-size: clamp(11px, 1.05vw, 13px); color: var(--muted); line-height: 1.55; }
+.imp-card .ic-icon { font-size: clamp(20px, 2.6vw, 30px); color: var(--text); }
+.imp-card h3 { font-size: clamp(18px, 1.95vw, 22.5px); font-weight: 600; color: var(--text); }
+.imp-card p  { font-size: clamp(15px, 1.5vw, 18px); color: var(--muted); line-height: 1.55; }
 .imp-b h3 { color: var(--blue);  }
 .imp-a h3 { color: var(--amber); }
 .imp-g h3 { color: var(--green); }
@@ -474,20 +460,20 @@ html, body {
 }
 .tc-av-b { border-color: var(--blue-border);  color: var(--blue);  background: var(--blue-bg); }
 .tc-av-s { border-color: var(--slate);        color: var(--slate); background: var(--slate-bg); }
-.tc-name { font-size: clamp(12px, 1.3vw, 14px); font-weight: 600; color: var(--text); }
-.tc-role { font-family: var(--mono); font-size: clamp(11px, 1vw, 12px); color: var(--faint); letter-spacing: 0.4px; }
+.tc-name { font-size: clamp(18px, 1.8vw, 21px); font-weight: 600; color: var(--text); }
+.tc-role { font-family: var(--mono); font-size: clamp(13.5px, 1.28vw, 15px); color: var(--faint); letter-spacing: 0.4px; }
 .tc-tags { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin-top: 2px; }
 .tc-tag {
-  font-family: var(--mono); font-size: clamp(11px, 0.98vw, 12px);
+  font-family: var(--mono); font-size: clamp(8px, 0.8vw, 9px);
   padding: 2px 6px; border-radius: 3px;
   border: 1px solid var(--border); color: var(--muted);
 }
 .event-meta {
-  font-family: var(--mono); font-size: clamp(12px, 1.05vw, 14px);
+  font-family: var(--mono); font-size: clamp(15px, 1.43vw, 18px);
   color: var(--faint); letter-spacing: 0.8px; text-transform: uppercase;
 }
 .closing {
-  font-size: clamp(18px, 2.6vw, 34px); font-weight: 600;
+  font-size: clamp(18px, 2.4vw, 30px); font-weight: 600;
   letter-spacing: -0.5px; color: var(--text);
 }
 .closing em { color: var(--blue); font-style: normal; }
@@ -508,12 +494,12 @@ html, body {
   font-weight: 600;
 }
 #s9 p {
-  font-size: clamp(14px, 1.4vw, 18px);
+  font-size: clamp(18px, 1.95vw, 24px);
   color: var(--muted);
 }
 #s9 .q {
   font-family: var(--mono);
-  font-size: clamp(12px, 1.05vw, 14px);
+  font-size: clamp(15px, 1.43vw, 18px);
   letter-spacing: 0.8px;
   color: var(--faint);
   text-transform: uppercase;
@@ -531,16 +517,43 @@ html, body {
 <div class="slide active" id="s1">
   <div class="left">
     <span class="eyebrow">Hack TUES 2026</span>
-    <h1>H<sub>2</sub>O-Sim</h1>
+    <h1>Qlean</h1>
     <p class="desc">
       Quantum-Powered Water Filtration Design
     </p>
-    <span class="byline">// 48 часа · ТУЕС · София · 2026</span>
   </div>
   <div class="right">
     <div class="water-particles" aria-hidden="true">
-      <span class="wp"></span><span class="wp"></span><span class="wp"></span><span class="wp"></span><span class="wp"></span>
-      <span class="wp"></span><span class="wp"></span><span class="wp"></span><span class="wp"></span><span class="wp"></span>
+      <svg class="molecule-svg" viewBox="0 0 340 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g stroke="#d5d3cd" stroke-width="1">
+          <polygon points="170,34 203,53 203,90 170,109 137,90 137,53"/>
+          <polygon points="203,53 236,72 236,109 203,128 170,109 170,72"/>
+          <polygon points="137,53 170,72 170,109 137,128 104,109 104,72"/>
+          <polygon points="170,109 203,128 203,165 170,184 137,165 137,128"/>
+          <polygon points="236,109 269,128 269,165 236,184 203,165 203,128"/>
+          <polygon points="104,109 137,128 137,165 104,184 71,165 71,128"/>
+          <polygon points="203,165 236,184 236,221 203,240 170,221 170,184"/>
+          <polygon points="137,165 170,184 170,221 137,240 104,221 104,184"/>
+        </g>
+        <g fill="#1e2130">
+          <circle cx="170" cy="34" r="3.2"/>
+          <circle cx="203" cy="53" r="2.6"/>
+          <circle cx="236" cy="72" r="2.8"/>
+          <circle cx="170" cy="109" r="4.8"/>
+          <circle cx="203" cy="128" r="2.8"/>
+          <circle cx="137" cy="90" r="3"/>
+          <circle cx="104" cy="109" r="2.5"/>
+          <circle cx="137" cy="128" r="3.1"/>
+          <circle cx="170" cy="184" r="2.7"/>
+          <circle cx="203" cy="165" r="2.7"/>
+          <circle cx="236" cy="184" r="3"/>
+          <circle cx="137" cy="240" r="2.5"/>
+          <circle cx="170" cy="221" r="2.5"/>
+        </g>
+        <circle cx="281" cy="54" r="16" fill="var(--amber-bg)" stroke="var(--amber-border)" stroke-width="1"/>
+        <text x="281" y="59" text-anchor="middle" fill="var(--amber)" font-family="IBM Plex Mono" font-size="11" font-weight="600">Pb²⁺</text>
+        <line x1="265" y1="62" x2="244" y2="73" stroke="var(--amber-border)" stroke-width="1.3" stroke-dasharray="3,3"/>
+      </svg>
     </div>
   </div>
 </div>
@@ -548,35 +561,35 @@ html, body {
 <!-- ══ SLIDE 2 — PROBLEM ══ -->
 <div class="slide" id="s2">
   <div class="hdr">
-    <span class="label"><span class="divider"></span>Проблемът</span>
-    <h2>Водата е замърсена.<br><span style="color:var(--amber)">Стандартните филтри не стигат.</span></h2>
+    <span class="label"><span class="divider"></span>The Problem</span>
+    <h2><span style="color:var(--amber)">contaminated water sources</span></h2>
   </div>
   <div class="lft">
     <div>
-      <div class="bignum">2 МЛРД.</div>
-      <div class="bignumlabel">души нямат достъп до чиста питейна вода</div>
+      <div class="bignum">2 BILLION</div>
+      <div class="bignumlabel">people do not have access to safe drinking water</div>
     </div>
     <div class="callout">
-      Традиционните филтри са универсални — не са оптимизирани за конкретния тип замърсяване.
-      Когато един филтър не е проектиран за твоя тип вода → <strong>по-малка ефективност</strong>
-      и <strong>по-голямо разхищение</strong>.
+      Traditional filters are universal — they are not optimized for a specific contamination profile.
+      When a filter is not designed for your water type → <strong>lower efficiency</strong>
+      and <strong>higher waste</strong>.
     </div>
   </div>
   <div class="rgt">
-    <span class="ptag-group-label">Основни замърсители</span>
+    <span class="ptag-group-label">Main Pollutants</span>
     <div class="ptag-group">
-      <span class="ptag ptag-a">Pb²⁺ Олово</span>
-      <span class="ptag ptag-a">Hg²⁺ Живак</span>
+      <span class="ptag ptag-a">Pb²⁺ Lead</span>
+      <span class="ptag ptag-a">Hg²⁺ Mercury</span>
     </div>
-    <span class="ptag-group-label" style="margin-top:10px">Органични</span>
+    <span class="ptag-group-label" style="margin-top:10px">Organic</span>
     <div class="ptag-group">
-      <span class="ptag ptag-b">Органични съединения</span>
+      <span class="ptag ptag-b">Organic Compounds</span>
     </div>
-    <span class="ptag-group-label" style="margin-top:10px">Физико-химични</span>
+    <span class="ptag-group-label" style="margin-top:10px">Physico-Chemical</span>
     <div class="ptag-group">
-      <span class="ptag ptag-c">NO₃⁻ Нитрати</span>
-      <span class="ptag ptag-c">Микропластмаса</span>
-      <span class="ptag ptag-c">Хлориди</span>
+      <span class="ptag ptag-c">NO₃⁻ Nitrates</span>
+      <span class="ptag ptag-c">Microplastics</span>
+      <span class="ptag ptag-c">Chlorides</span>
     </div>
   </div>
 </div>
@@ -584,37 +597,37 @@ html, body {
 <!-- ══ SLIDE 3 — SOLUTION ══ -->
 <div class="slide" id="s3">
   <div>
-    <span class="label"><span class="divider"></span>Нашето решение</span>
-    <h2>H2O-Sim генерира <span style="color:var(--blue)">custom филтри</span><br>за конкретния замърсителен профил.</h2>
+    <span class="label"><span class="divider"></span>Our Solution</span>
+    <h2>Qlean generates <span style="color:var(--blue)">custom filters</span><br>for specific contamination profiles.</h2>
   </div>
   <div class="flow-bar">
-    <div class="flow-step">Анализ на измерването<span class="arr">›</span></div>
-    <div class="flow-step fs-hi">Генериране<span class="arr">›</span></div>
-    <div class="flow-step fs-hi">Пречистване</div>
+    <div class="flow-step">Measurement Analysis<span class="arr">›</span></div>
+    <div class="flow-step fs-hi">Generation<span class="arr">›</span></div>
+    <div class="flow-step fs-hi">Purification</div>
   </div>
   <div class="sol-grid">
     <div class="sol-card c-blue">
       <div class="sc-icon"><i class="icon-fa fa-solid fa-microscope"></i></div>
       <h3>Custom design</h3>
-      <p>Не един универсален филтър — филтър за конкретната вода и конкретните замърсители.</p>
+      <p>Not one universal filter — a filter designed for specific water and specific pollutants.</p>
       <span class="sc-tag">specific water profile</span>
     </div>
     <div class="sol-card c-slate">
       <div class="sc-icon"><i class="icon-fa fa-solid fa-atom"></i></div>
       <h3>Quantum evaluation</h3>
-      <p>За всеки кандидат-филтър се симулира молекулното взаимодействие със замърсителя.</p>
+      <p>For each candidate filter, molecular interaction with the pollutant is simulated.</p>
       <span class="sc-tag">VQE scoring</span>
     </div>
     <div class="sol-card c-green">
       <div class="sc-icon"><i class="icon-fa fa-solid fa-dna"></i></div>
-      <h3>Оптимална геометрия</h3>
-      <p>Системата избира геометрията с най-добра ефективност за конкретния профил на водата.</p>
+      <h3>Optimal Geometry</h3>
+      <p>The system selects the geometry with the best efficiency for the specific water profile.</p>
       <span class="sc-tag">best-fit geometry</span>
     </div>
     <div class="sol-card c-amber">
       <div class="sc-icon"><i class="icon-fa fa-solid fa-globe"></i></div>
-      <h3>Краен резултат</h3>
-      <p>Проектът връща practically usable дизайн за пречистване, вместо „one-size-fits-all“ решение.</p>
+      <h3>Final Output</h3>
+      <p>The project returns a practically usable purification design instead of a one-size-fits-all solution.</p>
       <span class="sc-tag">ready to deploy</span>
     </div>
   </div>
@@ -623,43 +636,43 @@ html, body {
 <!-- ══ SLIDE 4 — HOW IT WORKS ══ -->
 <div class="slide" id="s4">
   <div>
-    <span class="label"><span class="divider"></span>Как работи</span>
-    <h2>Вода → Анализ → VQE Quantum Sim →<br><span style="color:var(--slate)">Оптимален филтър → 3D визуализация</span></h2>
+    <span class="label"><span class="divider"></span>How It Works</span>
+    <h2>Water → Analysis → VQE Quantum Sim →<br><span style="color:var(--slate)">Optimal Filter → 3D Visualization</span></h2>
   </div>
   <div class="pipeline">
     <div class="pipe-step ps-b">
       <div class="ps-num">01</div>
       <div class="ps-icon"><i class="icon-fa fa-solid fa-droplet"></i></div>
-      <div class="ps-title">Събиране на данни (4 начина)</div>
-      <div class="ps-desc">Ръчно въвеждане, импорт, глобална GemStat карта (исторически данни), USB/sensor вход</div>
+      <div class="ps-title">Data Collection (4 methods)</div>
+      <div class="ps-desc">Manual input, import, global GemStat map (historical data), USB/sensor input</div>
       <div class="ps-badge">manual · import · gemstat · sensor</div>
     </div>
     <div class="pipe-step ps-b">
       <div class="ps-num">02</div>
       <div class="ps-icon"><i class="icon-fa fa-solid fa-magnifying-glass"></i></div>
-      <div class="ps-title">Профил на замърсяване</div>
-      <div class="ps-desc">Системата извлича кои йони/молекули се засичат и в какви концентрации</div>
+      <div class="ps-title">Contamination Profile</div>
+      <div class="ps-desc">The system extracts which ions/molecules are present and at what concentrations</div>
       <div class="ps-badge">contaminant analysis</div>
     </div>
     <div class="pipe-step ps-p">
       <div class="ps-num">03</div>
       <div class="ps-icon"><i class="icon-fa fa-solid fa-dna"></i></div>
       <div class="ps-title">Genetic Algorithm</div>
-      <div class="ps-desc">DEAP предлага и еволюира различни геометрии на филтъра</div>
+      <div class="ps-desc">DEAP proposes and evolves different filter geometries</div>
       <div class="ps-badge">DEAP</div>
     </div>
     <div class="pipe-step ps-p">
       <div class="ps-num">04</div>
       <div class="ps-icon"><i class="icon-fa fa-solid fa-atom"></i></div>
-      <div class="ps-title">VQE симулация</div>
-      <div class="ps-desc">За всяка геометрия изчислява binding energy между филтъра и замърсителя</div>
+      <div class="ps-title">VQE Simulation</div>
+      <div class="ps-desc">For each geometry, it calculates binding energy between filter and pollutant</div>
       <div class="ps-badge">VQE quantum sim</div>
     </div>
     <div class="pipe-step ps-g">
       <div class="ps-num">05</div>
       <div class="ps-icon"><i class="icon-fa fa-solid fa-circle-check"></i></div>
-      <div class="ps-title">Резултат</div>
-      <div class="ps-desc">Оптималната геометрия с 3D визуализация и % removal efficiency</div>
+      <div class="ps-title">Result</div>
+      <div class="ps-desc">Optimal geometry with 3D visualization and % removal efficiency</div>
       <div class="ps-badge">3D + efficiency</div>
     </div>
   </div>
@@ -669,32 +682,32 @@ html, body {
 <div class="slide" id="s5">
   <div class="hdr">
     <span class="label"><span class="divider"></span>Live Demo</span>
-    <h2>Демо <span style="color:var(--green)">на живо</span></h2>
+    <h2><span style="color:var(--green)">Live</span> Demo</h2>
   </div>
   <div class="stp">
     <div class="d-step">
       <div class="d-num dn-b">1</div>
-      <div><div class="d-title">Отваряме приложението</div><div class="d-sub">Login · JWT auth · Dashboard</div></div>
+      <div><div class="d-title">Open the application</div><div class="d-sub">Login · JWT auth · Dashboard</div></div>
     </div>
     <div class="d-step">
       <div class="d-num dn-b">2</div>
-      <div><div class="d-title">Свързваме ESP32 по USB</div><div class="d-sub">serialport · 115200 baud · JSON · READ_MEASUREMENT</div></div>
+      <div><div class="d-title">Connect ESP32 via USB</div><div class="d-sub">serialport · 115200 baud · JSON · READ_MEASUREMENT</div></div>
     </div>
     <div class="d-step">
       <div class="d-num dn-b">3</div>
-      <div><div class="d-title">Четем измерването</div><div class="d-sub">Temp=22°C · pH=7.2 · Pb=0.05 mg/L · EC=320 µS/cm</div></div>
+      <div><div class="d-title">Read the measurement</div><div class="d-sub">Temp=22°C · pH=7.2 · Pb=0.05 mg/L · EC=320 µS/cm</div></div>
     </div>
     <div class="d-step">
       <div class="d-num">4</div>
-      <div><div class="d-title">Generate Filter → квантовата симулация тече</div><div class="d-sub">Pending → Generating · Celery worker · ~30–90 сек.</div></div>
+      <div><div class="d-title">Generate Filter → quantum simulation runs</div><div class="d-sub">Pending → Generating · Celery worker · ~30–90 sec.</div></div>
     </div>
     <div class="d-step">
       <div class="d-num">5</div>
-      <div><div class="d-title">Докато чакаме — GemStat карта</div><div class="d-sub">Реална локация от глобалната база данни</div></div>
+      <div><div class="d-title">While waiting — GemStat map</div><div class="d-sub">Real-world location from global dataset</div></div>
     </div>
     <div class="d-step">
       <div class="d-num dn-g">6</div>
-      <div><div class="d-title">Готово → 3D визуализация</div><div class="d-sub">Graphene решетка + Pb²⁺ ion binding · 3Dmol.js</div></div>
+      <div><div class="d-title">Done → 3D visualization</div><div class="d-sub">Graphene lattice + Pb²⁺ ion binding · 3Dmol.js</div></div>
     </div>
     <div class="d-step">
       <div class="d-num dn-g">7</div>
@@ -712,12 +725,12 @@ html, body {
 <!-- ══ SLIDE 6 — TECH ══ -->
 <div class="slide" id="s6">
   <div>
-    <span class="label"><span class="divider"></span>Технологии</span>
-    <h2>Използвани <span style="color:var(--blue)">технологии</span></h2>
+    <span class="label"><span class="divider"></span>Technologies</span>
+    <h2><span style="color:var(--blue)">Technology</span> Stack</h2>
   </div>
   <div class="tech-grid">
     <div class="tech-box">
-      <span class="tb-label">Desktop клиент</span>
+      <span class="tb-label">Desktop Client</span>
       <div class="tb-tags">
         <span class="tb-tag">Electron</span>
         <span class="tb-tag">React 19</span>
@@ -727,15 +740,15 @@ html, body {
       </div>
     </div>
     <div class="tech-box">
-      <span class="tb-label">Визуализация</span>
+      <span class="tb-label">Visualization</span>
       <div class="tb-tags">
         <span class="tb-tag">3Dmol.js / Three.js</span>
-        <span class="tb-tag">Leaflet (карта)</span>
+        <span class="tb-tag">Leaflet (map)</span>
         <span class="tb-tag">Recharts</span>
       </div>
     </div>
     <div class="tech-box">
-      <span class="tb-label">API сървър</span>
+      <span class="tb-label">API Server</span>
       <div class="tb-tags">
         <span class="tb-tag">Django REST</span>
         <span class="tb-tag">Celery</span>
@@ -744,15 +757,10 @@ html, body {
       </div>
     </div>
     <div class="tech-box">
-      <span class="tb-label">Quantum Core</span>
+      <span class="tb-label">Simulation + Optimization</span>
       <div class="tb-tags">
         <span class="tb-tag">Qiskit Aer</span>
         <span class="tb-tag">VQE simulator</span>
-      </div>
-    </div>
-    <div class="tech-box">
-      <span class="tb-label">Оптимизатор</span>
-      <div class="tb-tags">
         <span class="tb-tag">DEAP</span>
         <span class="tb-tag">Genetic Algorithm</span>
       </div>
@@ -763,37 +771,37 @@ html, body {
 <!-- ══ SLIDE 7 — IMPACT ══ -->
 <div class="slide" id="s7">
   <div>
-    <span class="label"><span class="divider"></span>Импакт</span>
-    <h2>Защо има <span style="color:var(--green)">значение</span></h2>
+    <span class="label"><span class="divider"></span>Impact</span>
+    <h2>Why It <span style="color:var(--green)">Matters</span></h2>
   </div>
   <div class="impact-grid">
     <div class="imp-card imp-b">
       <div class="ic-icon"><i class="icon-fa fa-solid fa-bullseye"></i></div>
-      <h3>Персонализация</h3>
-      <p>Custom филтър за всеки тип замърсяване = по-висока ефективност.</p>
+      <h3>Personalization</h3>
+      <p>Custom filter per contamination type = higher efficiency.</p>
     </div>
     <div class="imp-card imp-s">
       <div class="ic-icon"><i class="icon-fa fa-solid fa-atom"></i></div>
-      <h3>Квантово предимство</h3>
-      <p>VQE изчислява молекулярни взаимодействия, невъзможни за класически алгоритми.</p>
+      <h3>Quantum Advantage</h3>
+      <p>VQE computes molecular interactions that are not feasible for classical algorithms.</p>
     </div>
     <div class="imp-card imp-g">
       <div class="ic-icon"><i class="icon-fa fa-solid fa-earth-europe"></i></div>
-      <h3>Достъпно навсякъде</h3>
-      <p>Свържи всеки сензор или използвай глобалните GemStat данни.</p>
+      <h3>Accessibility</h3>
+      <p>Connect any sensor or use global GemStat data.</p>
     </div>
     <div class="imp-card imp-a">
       <div class="ic-icon"><i class="icon-fa fa-solid fa-chart-line"></i></div>
-      <h3>Мащабируемо</h3>
-      <p>От домашен филтър до индустриална пречиствателна станция; open platform с exportable CSV данни.</p>
+      <h3>Scalability</h3>
+      <p>From home water filters to industrial treatment plants; open platform with exportable CSV data.</p>
     </div>
   </div>
 </div>
 
 <!-- ══ SLIDE 8 — TEAM ══ -->
 <div class="slide" id="s8">
-  <span class="label" style="margin-bottom:0"><span class="divider"></span>Екипът</span>
-  <h2>Нашият <span style="color:var(--blue)">екип</span></h2>
+  <span class="label" style="margin-bottom:0"><span class="divider"></span>Team</span>
+  <h2>Our <span style="color:var(--blue)">Team</span></h2>
   <div class="team-row">
     <div class="tc">
       <div class="tc-av tc-av-b">FE1</div>
@@ -825,24 +833,26 @@ html, body {
     <div class="tc">
       <div class="tc-av tc-av-s">BQ2</div>
       <div class="tc-name">Backend / Quantum</div>
-      <div class="tc-role">Simulation</div>
+      <div class="tc-role">Simulation + Optimization</div>
       <div class="tc-tags">
         <span class="tc-tag">Qiskit</span>
         <span class="tc-tag">VQE</span>
-      </div>
-    </div>
-    <div class="tc">
-      <div class="tc-av tc-av-s">BQ3</div>
-      <div class="tc-name">Backend / Quantum</div>
-      <div class="tc-role">Optimization</div>
-      <div class="tc-tags">
         <span class="tc-tag">DEAP</span>
         <span class="tc-tag">GA</span>
       </div>
     </div>
     <div class="tc">
+      <div class="tc-av tc-av-b">FE3</div>
+      <div class="tc-name">Frontend</div>
+      <div class="tc-role">3D & Interaction</div>
+      <div class="tc-tags">
+        <span class="tc-tag">3Dmol.js</span>
+        <span class="tc-tag">Three.js</span>
+      </div>
+    </div>
+    <div class="tc">
       <div class="tc-av tc-av-b">M</div>
-      <div class="tc-name">Ментор</div>
+      <div class="tc-name">Mentor</div>
       <div class="tc-role">Technical Guidance</div>
       <div class="tc-tags">
         <span class="tc-tag">Architecture</span>
@@ -850,25 +860,25 @@ html, body {
       </div>
     </div>
   </div>
-  <span class="event-meta">Hack TUES 2026 участници · 5-членен екип + ментор</span>
-  <p class="closing">Пречистваме <em>бъдещето.</em></p>
+  <span class="event-meta">Hack TUES 2026 participants · 3 frontenders + 2 backenders + mentor</span>
+  <p class="closing">Purifying <em>the future.</em></p>
 </div>
 
 <!-- ══ SLIDE 9 — THANK YOU ══ -->
 <div class="slide" id="s9">
-  <span class="label"><span class="divider"></span>Финал</span>
-  <h2>Благодарим за вниманието</h2>
-  <p>H2O-Sim · Quantum-Powered Water Filtration Design</p>
-  <span class="q">Въпроси?</span>
+  <span class="label"><span class="divider"></span>Final</span>
+  <h2>Thank You for Your Attention</h2>
+  <p>Qlean · Quantum-Powered Water Filtration Design</p>
+  <span class="q">Questions?</span>
 </div>
 
 </div><!-- /slides -->
 
 <!-- NAV -->
 <div class="nav">
-  <button id="btn-prev" disabled>← назад</button>
+  <button id="btn-prev" disabled>← back</button>
   <div class="dots" id="dots"></div>
-  <button id="btn-next">напред →</button>
+  <button id="btn-next">next →</button>
 </div>
 
 </div></div><!-- /frame /stage -->
@@ -902,7 +912,7 @@ function go(idx) {
   ctr.textContent = `${String(cur+1).padStart(2,'0')} / ${String(N).padStart(2,'0')}`;
   btnP.disabled = cur === 0;
   btnN.disabled = cur === N - 1;
-  btnN.textContent = cur === N - 1 ? 'готово ✓' : 'напред →';
+  btnN.textContent = cur === N - 1 ? 'done ✓' : 'next →';
 }
 
 btnP.onclick = () => go(cur - 1);

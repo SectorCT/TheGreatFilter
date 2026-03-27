@@ -1,4 +1,4 @@
-# H2O-Sim — Implementation Plan (Hack TUES 2026)
+# Qlean — Implementation Plan (Hack TUES 2026)
 
 **Time budget:** 48 hours
 **Team:** frontend + backend/quantum
@@ -511,7 +511,7 @@ def simulate_binding(filter_geometry, pollutant):
 
 **Page:** `/measurements/new/lab-equipment`
 - Simulated device connection flow:
-  1. "Connect Device" button → show "Scanning..." → "Connected to H2O-Probe v1.0"
+  1. "Connect Device" button → show "Scanning..." → "Connected to Qlean-Probe v1.0"
   2. "Read Data" → show progress → display measurement preview
   3. "Save Measurement" → `POST /measurements` with `source: "lab_equipment"`
 - For hackathon: read from a mock JSON payload (no real USB required, but the `serialport` package can be wired up if actual hardware is available)

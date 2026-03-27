@@ -1,4 +1,4 @@
-export const APP_NAME = 'H₂O-Sim'
+export const APP_NAME = 'Qlean'
 export const TAGLINE = 'Water Quality Analysis Platform'
 
 // Keep this URL stable (for example: https://your-domain.com/downloads/client-latest.AppImage).

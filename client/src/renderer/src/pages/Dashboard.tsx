@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
 import { StatusBadge } from '@renderer/components/StatusBadge'
 import { Button } from '@renderer/components/ui/button'
+import { usePollPendingFilterStatuses } from '@renderer/hooks/usePollPendingFilterStatuses'
 import { getFilters, getMeasurements } from '@renderer/utils/api/endpoints'
 import {
   type FilterListItem,
@@ -91,6 +92,8 @@ export function Dashboard(): React.JSX.Element {
     }
   }, [])
 
+  usePollPendingFilterStatuses(filters, setFilters)
+
   const measurementCount = useMemo(() => measurements.length, [measurements])
   const filterCount = useMemo(() => filters.length, [filters])
   const generatingCount = useMemo(
@@ -153,9 +156,8 @@ export function Dashboard(): React.JSX.Element {
             <table className="min-w-[720px] w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-table-header text-left">
-                  <th className="px-4 py-2.5 font-medium text-muted-foreground">ID</th>
-                  <th className="px-4 py-2.5 font-medium text-muted-foreground">Name</th>
-                  <th className="px-4 py-2.5 font-medium text-muted-foreground">Source</th>
+                  <th className="px-4 py-2.5 font-medium text-muted-foreground">Study</th>
+                  <th className="px-4 py-2.5 font-medium text-muted-foreground">Measurement</th>
                   <th className="px-4 py-2.5 font-medium text-muted-foreground">Date</th>
                   <th className="px-4 py-2.5 font-medium text-muted-foreground">Status</th>
                   <th className="px-4 py-2.5 font-medium text-muted-foreground" />
@@ -170,16 +172,15 @@ export function Dashboard(): React.JSX.Element {
                       item.status === 'Generating' ? 'shimmer-row' : ''
                     }`}
                   >
-                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{item.filterId}</td>
+                    <td className="px-4 py-3 font-medium">{item.studyName?.trim() || '—'}</td>
                     <td className="px-4 py-3 font-medium">
                       <span className="inline-flex items-center gap-1.5">
-                        <span>Filter {item.filterId.slice(0, 8)}</span>
+                        <span>{item.measurementName?.trim() || '—'}</span>
                         {item.useQuantumComputer === true ? (
                           <Cpu size={14} strokeWidth={1.7} className="text-violet-600" aria-label="Quantum computer" />
                         ) : null}
                       </span>
                     </td>
-                    <td className="px-4 py-3">-</td>
                     <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
                       {formatDateYmd(item.createdAt)}
                     </td>

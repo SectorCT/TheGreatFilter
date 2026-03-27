@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Loader2, Pause, Play, RotateCcw } from 'lucide-react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
 import { Button } from '@renderer/components/ui/button'
 import { getFilterDetails } from '@renderer/utils/api/endpoints'
 import type { FilterInfo } from '@renderer/utils/api/types'
 import { buildFilterInfoViewModel } from '@renderer/utils/filterInfoViewModel'
+import {
+  buildFilterDetailsFromImportedJson,
+  isImportedFilterRouteId,
+  readImportedFilterSession,
+} from '@renderer/utils/importedFilterPayload'
 import {
   SimulationEngine,
   buildSimulationConfig,
@@ -16,7 +21,9 @@ import {
 
 export function FilterSimulation(): React.JSX.Element {
   const navigate = useNavigate()
+  const location = useLocation()
   const { id } = useParams()
+  const isImported = isImportedFilterRouteId(id)
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const engineRef = useRef<SimulationEngine | null>(null)
@@ -44,6 +51,38 @@ export function FilterSimulation(): React.JSX.Element {
       return
     }
 
+    if (isImported) {
+      const session = readImportedFilterSession(location)
+      if (!session?.importedFilterJson) {
+        setFilterInfo(null)
+        setError('No imported filter data. Open your JSON from All Filters first.')
+        setLoading(false)
+        return
+      }
+      try {
+        const details = buildFilterDetailsFromImportedJson(session.importedFilterJson, session.importedFileName)
+        if (cancelled) return
+        setFilterInfo(details.filterInfo)
+        const config = buildSimulationConfig(details.filterInfo)
+        setSimConfig(config)
+        if (engineRef.current) {
+          engineRef.current.config = config
+          engineRef.current.reset()
+        }
+        setError(null)
+      } catch (parseError) {
+        if (!cancelled) {
+          setFilterInfo(null)
+          setError(parseError instanceof Error ? parseError.message : 'Failed to load imported filter.')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+      return () => {
+        cancelled = true
+      }
+    }
+
     getFilterDetails(id)
       .then((resp) => {
         if (cancelled) return
@@ -68,7 +107,7 @@ export function FilterSimulation(): React.JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [id])
+  }, [id, isImported, location.state])
   const vm = useMemo(() => buildFilterInfoViewModel(filterInfo), [filterInfo])
 
   const getEngine = useCallback(
@@ -172,7 +211,11 @@ export function FilterSimulation(): React.JSX.Element {
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <button
-            onClick={() => navigate(`/filters/${id}`)}
+            onClick={() =>
+              navigate(`/filters/${id}`, {
+                state: isImported ? readImportedFilterSession(location) ?? undefined : undefined,
+              })
+            }
             className="rounded-[6px] p-1.5 transition-colors hover:bg-secondary"
           >
             <ArrowLeft size={16} strokeWidth={1.5} />
@@ -251,7 +294,7 @@ export function FilterSimulation(): React.JSX.Element {
               </div>
             )}
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Target Efficiency</span>
+              <span className="text-muted-foreground">Target capture efficiency</span>
               <span className="font-mono text-xs">{simConfig.removalEfficiency}%</span>
             </div>
             {vm.metrics.pollutant !== 'n/a' && (
@@ -312,7 +355,12 @@ export function FilterSimulation(): React.JSX.Element {
                   className="inline-block h-3 w-3 shrink-0 rounded-full"
                   style={{ backgroundColor: m.color }}
                 />
-                <span className="flex-1 text-muted-foreground">{m.name}</span>
+                <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                  {m.name}
+                  <span className="ml-1 font-mono text-[10px] text-muted-foreground/80">
+                    ({Math.round(simConfig.removalEfficiency)}% tgt)
+                  </span>
+                </span>
                 <span className="font-mono text-xs">
                   {stats.capturedByType[m.code] ?? 0}
                 </span>

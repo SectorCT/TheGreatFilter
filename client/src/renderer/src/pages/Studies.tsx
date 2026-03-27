@@ -71,7 +71,6 @@ export function Studies(): React.JSX.Element {
     } catch (createError) {
       const message = createError instanceof Error ? createError.message : 'Failed to create study.'
       setError(message)
-      toast.error('Failed to create study.')
     } finally {
       setIsCreating(false)
     }

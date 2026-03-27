@@ -6,6 +6,13 @@ import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
 import { getFilterDetails } from '@renderer/utils/api/endpoints'
 import type { FilterInfo } from '@renderer/utils/api/types'
 import { atomPositionsToXyz, buildFilterInfoViewModel } from '@renderer/utils/filterInfoViewModel'
+import {
+  IMPORTED_FILTER_ROUTE_ID,
+  normalizeImportedFilterInfo,
+  readImportedFilterSession,
+  writeImportedFilterSession,
+  type ImportedFilterLocationState,
+} from '@renderer/utils/importedFilterPayload'
 
 type SelectedAtomInfo = {
   index: number | string
@@ -32,117 +39,6 @@ type ModelAtom = {
   z: number
   bonds: number[]
   bondOrder: number[]
-}
-
-const toRecord = (value: unknown): Record<string, unknown> | null => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
-  return value as Record<string, unknown>
-}
-
-const toFiniteNumber = (value: unknown): number | undefined =>
-  typeof value === 'number' && Number.isFinite(value) ? value : undefined
-
-const toStringOrUndefined = (value: unknown): string | undefined =>
-  typeof value === 'string' && value.trim().length > 0 ? value : undefined
-
-const normalizeAtomPositions = (
-  value: unknown,
-): Array<{ id?: string | number; x: number; y: number; z: number; element: string }> | undefined => {
-  if (!Array.isArray(value)) return undefined
-  const atoms: Array<{ id?: string | number; x: number; y: number; z: number; element: string }> = []
-  for (const entry of value) {
-    const item = toRecord(entry)
-    if (!item) continue
-    const x = toFiniteNumber(item.x)
-    const y = toFiniteNumber(item.y)
-    const z = toFiniteNumber(item.z)
-    const element = toStringOrUndefined(item.element)
-    if (x == null || y == null || z == null || !element) continue
-    atoms.push({
-      id: typeof item.id === 'string' || typeof item.id === 'number' ? item.id : undefined,
-      x,
-      y,
-      z,
-      element,
-    })
-  }
-  return atoms
-}
-
-const normalizeConnections = (
-  value: unknown,
-): Array<{ from: string | number; to: string | number; order?: number }> | undefined => {
-  if (!Array.isArray(value)) return undefined
-  const connections: Array<{ from: string | number; to: string | number; order?: number }> = []
-  for (const entry of value) {
-    const item = toRecord(entry)
-    if (!item) continue
-    const from = item.from
-    const to = item.to
-    if ((typeof from !== 'string' && typeof from !== 'number') || (typeof to !== 'string' && typeof to !== 'number')) {
-      continue
-    }
-    const order = toFiniteNumber(item.order)
-    connections.push({ from, to, order })
-  }
-  return connections
-}
-
-const normalizeImportedFilterInfo = (payload: unknown): FilterInfo => {
-  const parsed = toRecord(payload)
-  if (!parsed) throw new Error('JSON root must be an object.')
-
-  const rawFilterInfo = toRecord(parsed.filterInfo) ?? parsed
-  const nestedFilterStructure = toRecord(rawFilterInfo.filterStructure)
-  const nestedResultPayload = toRecord(rawFilterInfo.resultPayload)
-  const nestedExperimentPayload = toRecord(rawFilterInfo.experimentPayload)
-  const nestedSummaryMetrics = toRecord(rawFilterInfo.summaryMetrics)
-
-  const filterStructure = {
-    ...(nestedFilterStructure ?? {}),
-    poreSize: toFiniteNumber(nestedFilterStructure?.poreSize) ?? toFiniteNumber(rawFilterInfo.poreSize),
-    layerThickness:
-      toFiniteNumber(nestedFilterStructure?.layerThickness) ?? toFiniteNumber(rawFilterInfo.layerThickness),
-    latticeSpacing:
-      toFiniteNumber(nestedFilterStructure?.latticeSpacing) ?? toFiniteNumber(rawFilterInfo.latticeSpacing),
-    materialType:
-      toStringOrUndefined(nestedFilterStructure?.materialType) ?? toStringOrUndefined(rawFilterInfo.materialType),
-    atomPositions: normalizeAtomPositions(nestedFilterStructure?.atomPositions ?? rawFilterInfo.atomPositions),
-    connections: normalizeConnections(nestedFilterStructure?.connections ?? rawFilterInfo.connections)
-  }
-
-  const resultPayload = {
-    ...(nestedResultPayload ?? {}),
-    bindingEnergy:
-      toFiniteNumber(nestedResultPayload?.bindingEnergy) ?? toFiniteNumber(rawFilterInfo.bindingEnergy),
-    removalEfficiency:
-      toFiniteNumber(nestedResultPayload?.removalEfficiency) ?? toFiniteNumber(rawFilterInfo.removalEfficiency),
-    pollutant: toStringOrUndefined(nestedResultPayload?.pollutant) ?? toStringOrUndefined(rawFilterInfo.pollutant),
-    pollutantSymbol:
-      toStringOrUndefined(nestedResultPayload?.pollutantSymbol) ??
-      toStringOrUndefined(rawFilterInfo.pollutantSymbol),
-  }
-
-  const normalized: FilterInfo = {
-    filterStructure,
-    resultPayload,
-    experimentPayload: nestedExperimentPayload ?? undefined,
-    summaryMetrics: nestedSummaryMetrics ?? undefined,
-  }
-
-  const hasCoordinates =
-    Array.isArray(filterStructure.atomPositions) && filterStructure.atomPositions.length > 0
-  const hasAnyMetric =
-    typeof filterStructure.materialType === 'string' ||
-    typeof filterStructure.poreSize === 'number' ||
-    typeof resultPayload.bindingEnergy === 'number' ||
-    typeof resultPayload.removalEfficiency === 'number'
-
-  if (!hasCoordinates && !hasAnyMetric) {
-    throw new Error('JSON does not contain recognizable filter visualization fields.')
-  }
-
-  return normalized
 }
 
 const BASE_ELEMENTS = ['C', 'N', 'O', 'S', 'H'] as const
@@ -211,6 +107,40 @@ export function FilterVisualization(): React.JSX.Element {
 
   useEffect(() => {
     let cancelled = false
+
+    const loadImported = (session: ImportedFilterLocationState): void => {
+      try {
+        const importedInfo = normalizeImportedFilterInfo(session.importedFilterJson)
+        if (cancelled) return
+        setFilterInfo(importedInfo)
+        setLoadedFromName(session.importedFileName ?? null)
+        setError(null)
+      } catch (importError) {
+        if (!cancelled) {
+          setFilterInfo(null)
+          setError(importError instanceof Error ? importError.message : 'Failed to parse filter JSON.')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    if (id === IMPORTED_FILTER_ROUTE_ID) {
+      const session = readImportedFilterSession(location)
+      if (!session?.importedFilterJson) {
+        setFilterInfo(null)
+        setError('No imported filter data. Open a JSON file from All Filters.')
+        setLoading(false)
+        return () => {
+          cancelled = true
+        }
+      }
+      loadImported(session)
+      return () => {
+        cancelled = true
+      }
+    }
+
     if (id) {
       getFilterDetails(id)
         .then((resp) => {
@@ -230,32 +160,22 @@ export function FilterVisualization(): React.JSX.Element {
       }
     }
 
-    const state = (location.state ?? {}) as {
+    const state = (location.state ?? {}) as ImportedFilterLocationState & {
       uploadedFilterJson?: unknown
       uploadedFileName?: string
     }
-    if (state.uploadedFilterJson === undefined) {
-      navigate('/filters', { replace: true })
+    const legacyJson = state.importedFilterJson ?? state.uploadedFilterJson
+    const fileName = state.importedFileName ?? state.uploadedFileName
+    if (legacyJson !== undefined) {
+      const next: ImportedFilterLocationState = { importedFilterJson: legacyJson, importedFileName: fileName }
+      writeImportedFilterSession(next)
+      navigate(`/filters/${IMPORTED_FILTER_ROUTE_ID}/visualize`, { replace: true, state: next })
       return () => {
         cancelled = true
       }
     }
 
-    try {
-      const importedInfo = normalizeImportedFilterInfo(state.uploadedFilterJson)
-      if (cancelled) return
-      setFilterInfo(importedInfo)
-      setLoadedFromName(state.uploadedFileName ?? null)
-      setError(null)
-    } catch (importError) {
-      if (!cancelled) {
-        setFilterInfo(null)
-        setError(importError instanceof Error ? importError.message : 'Failed to parse filter JSON.')
-      }
-    } finally {
-      if (!cancelled) setLoading(false)
-    }
-
+    navigate('/filters', { replace: true })
     return () => {
       cancelled = true
     }
@@ -424,7 +344,16 @@ export function FilterVisualization(): React.JSX.Element {
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <button
-            onClick={() => (id ? navigate(`/filters/${id}`) : navigate('/filters'))}
+            onClick={() =>
+              id
+                ? navigate(`/filters/${id}`, {
+                    state:
+                      id === IMPORTED_FILTER_ROUTE_ID
+                        ? readImportedFilterSession(location) ?? undefined
+                        : undefined,
+                  })
+                : navigate('/filters')
+            }
             className="rounded-[6px] p-1.5 transition-colors hover:bg-secondary"
           >
             <ArrowLeft size={16} strokeWidth={1.5} />
