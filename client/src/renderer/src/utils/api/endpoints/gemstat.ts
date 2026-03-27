@@ -11,15 +11,25 @@ import {
   type MeasurementParameter
 } from '../types'
 
+let locationsInFlight: Promise<GemstatLocationFetchResponse> | null = null
+
 export const getGemstatLocations = async (): Promise<GemstatLocationFetchResponse> => {
-  return makeAuthenticatedReq<undefined, GemstatLocationFetchResponse>({
+  if (locationsInFlight) {
+    return locationsInFlight
+  }
+
+  const startMs = performance.now()
+  const startedAtIso = new Date().toISOString()
+  console.info(`[Map API] locations start: ${startedAtIso}`)
+
+  locationsInFlight = makeAuthenticatedReq<undefined, GemstatLocationFetchResponse>({
     method: 'GET',
     path: '/api/measurements/map/',
     authRequired: true,
     parseResponse: async (response) => {
       const payload = (await response.json()) as MeasurementMapResponse
       const locations: GemstatLocation[] = []
-      let droppedCount = 0
+      const seenLocationIds = new Set<string>()
       for (const item of payload.results ?? []) {
         const latitude = item.latitude ?? item.sampleLocation?.latitude
         const longitude = item.longitude ?? item.sampleLocation?.longitude
@@ -29,12 +39,15 @@ export const getGemstatLocations = async (): Promise<GemstatLocationFetchRespons
           typeof longitude !== 'number' ||
           !Number.isFinite(longitude)
         ) {
-          droppedCount += 1
           continue
         }
 
+        const normalizedLocationId = item.locationId ?? item.sampleLocation?.station_id ?? item.measurementId
+        if (seenLocationIds.has(normalizedLocationId)) continue
+        seenLocationIds.add(normalizedLocationId)
+
         locations.push({
-          locationId: item.locationId ?? item.sampleLocation?.station_id ?? item.measurementId,
+          locationId: normalizedLocationId,
           measurementId: item.measurementId,
           localStationNumber:
             item.sampleLocation?.local_station_number ?? item.sampleLocation?.station_id ?? null,
@@ -64,21 +77,24 @@ export const getGemstatLocations = async (): Promise<GemstatLocationFetchRespons
           meanAbstractionLevel: null,
         })
       }
-      if (droppedCount > 0) {
-        console.warn(
-          `[Map API] Dropped ${droppedCount} locations due to missing/invalid coordinates.`,
-        )
-      }
-
       return {
         locations,
       }
     },
     fake404: () => {
-      console.warn('[Map API] 404 from /api/measurements/map/; returning empty locations.')
       return { locations: [] }
     },
   })
+
+  try {
+    return await locationsInFlight
+  } finally {
+    const endMs = performance.now()
+    const endedAtIso = new Date().toISOString()
+    const deltaMs = Math.round(endMs - startMs)
+    console.info(`[Map API] locations end: ${endedAtIso} (delta ${deltaMs}ms)`)
+    locationsInFlight = null
+  }
 }
 
 export const getGemstatStationMeasurements = async (

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { divIcon, point } from 'leaflet'
-import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
+import { MapContainer, Marker, TileLayer } from 'react-leaflet'
 import type { LatLngBoundsExpression } from 'leaflet'
 import { useMap } from 'react-leaflet'
 import MarkerClusterGroup from 'react-leaflet-cluster'
@@ -40,11 +40,6 @@ const getDefaultCenter = (points: GemstatLocation[]): [number, number] => {
     (p) => typeof p.latitude === 'number' && typeof p.longitude === 'number'
   )
   return first ? [first.latitude, first.longitude] : [42.6977, 23.3219]
-}
-
-const getPopupText = (p: GemstatLocation): string => {
-  const parts = [p.stationNarrative ?? p.waterBodyName ?? '']
-  return parts.filter(Boolean).join(' • ')
 }
 
 const getBoundsExpression = (points: GemstatLocation[]): LatLngBoundsExpression | null => {
@@ -178,9 +173,7 @@ export default function OpenStreetMapPointsCard({
                   onSelectPoint?.(p.source)
                 },
               }}
-            >
-              <Popup>{getPopupText(p.source) || p.source.locationId}</Popup>
-            </Marker>
+            />
           ))}
         </MarkerClusterGroup>
       </MapContainer>
