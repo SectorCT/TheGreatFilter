@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import type { GemstatLocationRow, GemstatLocation, GemstatStationMeasurementsResponse, MeasurementParameter } from '@renderer/utils/api/types'
+import type { GemstatLocationRow, MeasurementParameter } from '@renderer/utils/api/types'
 import type { GemstatStationMeasurementRow } from '@renderer/utils/api/types'
 
 type NormalizeStationMeasurementsRequest = {
@@ -25,14 +25,20 @@ type NormalizeStationMeasurementsResponse = {
 const normalizePollutantsToParameters = (pollutants: unknown): MeasurementParameter[] => {
   if (!Array.isArray(pollutants)) return []
   return pollutants
-    .map((pollutant) => {
+    .map((pollutant): MeasurementParameter | null => {
       const p = (pollutant ?? {}) as Record<string, unknown>
       if (typeof p.parameterCode !== 'string') return null
       if (typeof p.value !== 'number' || !Number.isFinite(p.value)) return null
       return {
         parameterCode: p.parameterCode,
-        parameterName: typeof p.parameterName === 'string' ? p.parameterName : null,
-        unit: typeof p.unit === 'string' ? p.unit : null,
+        parameterName:
+          typeof p.parameterName === 'string' && p.parameterName.trim().length > 0
+            ? p.parameterName
+            : undefined,
+        unit:
+          typeof p.unit === 'string' && p.unit.trim().length > 0
+            ? p.unit
+            : undefined,
         value: p.value
       }
     })
@@ -40,7 +46,7 @@ const normalizePollutantsToParameters = (pollutants: unknown): MeasurementParame
 }
 
 const normalizeStationRows = (
-  locationId: string,
+  _locationId: string,
   payload: Record<string, unknown>
 ): GemstatLocationRow[] => {
   // Legacy shape: { rows: GemstatLocationRow[] }

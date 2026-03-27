@@ -188,9 +188,6 @@ export default function OpenStreetMapPointsCard({
                 mousedown: () => {
                   emitSelectPoint(p.source)
                 },
-                touchstart: () => {
-                  emitSelectPoint(p.source)
-                },
                 click: () => {
                   emitSelectPoint(p.source)
                 },
