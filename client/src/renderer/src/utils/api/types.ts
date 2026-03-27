@@ -311,7 +311,9 @@ export type FilterInfo = {
 export type FilterDetailsSuccessResponse = {
   filterId: string
   studyId: string
+  studyName?: string
   measurementId: string
+  measurementName?: string
   status: 'Success'
   filterInfo: FilterInfo
   createdAt: string // ISO-8601

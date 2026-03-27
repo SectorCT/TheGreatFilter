@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { Toaster } from '@renderer/components/ui/toaster'
@@ -16,8 +17,34 @@ import { MeasurementDetails } from '@renderer/pages/MeasurementDetails'
 import { AddMeasurement } from '@renderer/pages/AddMeasurement'
 import { Studies } from '@renderer/pages/Studies'
 import { NotFound } from '@renderer/pages/NotFound'
+import { getGemstatLocations, hasGemstatLocationsCache } from '@renderer/utils/api/endpoints'
 
 function App(): React.JSX.Element {
+  useEffect(() => {
+    if (hasGemstatLocationsCache()) return
+    void getGemstatLocations().catch(() => {
+      // Warm-up cache is best-effort.
+    })
+  }, [])
+
+  useEffect(() => {
+    const preloadMapModule = (): void => {
+      void import('@renderer/components/OpenStreetMapPointsCard')
+    }
+
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      const idleId = (window as Window & { requestIdleCallback: (cb: () => void) => number }).requestIdleCallback(
+        preloadMapModule
+      )
+      return () => {
+        ;(window as Window & { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback?.(idleId)
+      }
+    }
+
+    const timeoutId = globalThis.setTimeout(preloadMapModule, 1200)
+    return () => globalThis.clearTimeout(timeoutId)
+  }, [])
+
   return (
     <TooltipProvider>
       <Toaster />
@@ -31,6 +58,7 @@ function App(): React.JSX.Element {
             <Route path="/filters/new" element={<NewFilter />} />
             <Route path="/filters/:id" element={<FilterDetails />} />
             <Route path="/filters/:id/analysis" element={<FilterAnalysis />} />
+            <Route path="/filters/visualize" element={<FilterVisualization />} />
             <Route path="/filters/:id/visualize" element={<FilterVisualization />} />
             <Route path="/filters/:id/simulate" element={<FilterSimulation />} />
             <Route path="/measurements" element={<Measurements />} />

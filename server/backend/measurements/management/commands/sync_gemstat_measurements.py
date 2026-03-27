@@ -20,6 +20,18 @@ class Command(BaseCommand):
             default=None,
             help="Optional cap for the number of grouped measurement snapshots to import.",
         )
+        parser.add_argument(
+            "--max-stations",
+            type=int,
+            default=None,
+            help="Optional cap for the number of stations to include during import.",
+        )
+        parser.add_argument(
+            "--max-snapshots-per-station",
+            type=int,
+            default=None,
+            help="Optional cap for how many snapshots each station can contribute.",
+        )
 
     def handle(self, *args, **options):
         dataset_dir = options["dataset_dir"]
@@ -28,6 +40,8 @@ class Command(BaseCommand):
                 dataset_dir,
                 included_filenames=options["files"],
                 max_snapshots=options["max_snapshots"],
+                max_stations=options["max_stations"],
+                max_snapshots_per_station=options["max_snapshots_per_station"],
             )
         except FileNotFoundError as exc:
             raise CommandError(str(exc)) from exc

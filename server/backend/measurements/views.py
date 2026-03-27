@@ -5,15 +5,15 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import WaterMeasurement
+from .models import Station, WaterMeasurement
 from .serializers import (
     CsvImportUploadSerializer,
+    StationMapSerializer,
+    StationMeasurementSerializer,
+    StationSummarySerializer,
     WaterMeasurementCreateSerializer,
     WaterMeasurementDetailSerializer,
-    WaterMeasurementLocationMeasurementSerializer,
-    WaterMeasurementLocationSerializer,
     WaterMeasurementListSerializer,
-    WaterMeasurementMapSerializer,
     WaterMeasurementOptionSerializer,
 )
 from .services.importers import parse_uploaded_measurement_csv
@@ -23,7 +23,22 @@ class WaterMeasurementListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return WaterMeasurement.objects.filter(owner=self.request.user).order_by("-created_at")
+        return (
+            WaterMeasurement.objects.filter(owner=self.request.user)
+            .select_related("station")
+            .only(
+                "id",
+                "name",
+                "source",
+                "created_at",
+                "temperature",
+                "ph",
+                "pollutants_data",
+                "station_id",
+                "station__external_station_id",
+            )
+            .order_by("-created_at")
+        )
 
     def get_serializer_class(self):
         if self.request.method == "POST":
@@ -42,52 +57,87 @@ class WaterMeasurementOptionsView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return WaterMeasurement.objects.filter(owner=self.request.user).order_by("-created_at")
+        return (
+            WaterMeasurement.objects.filter(owner=self.request.user)
+            .select_related("station")
+            .only(
+                "id",
+                "name",
+                "source",
+                "created_at",
+                "temperature",
+                "ph",
+                "pollutants_data",
+                "station_id",
+                "station__external_station_id",
+            )
+            .order_by("-created_at")
+        )
 
 
 class WaterMeasurementDetailView(generics.RetrieveAPIView):
     serializer_class = WaterMeasurementDetailSerializer
     permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        return WaterMeasurement.objects.filter(owner=self.request.user) | WaterMeasurement.objects.filter(
-            is_public=True
+    def get_object(self):
+        measurement = generics.get_object_or_404(
+            WaterMeasurement.objects.select_related("station").only(
+                "id",
+                "owner_id",
+                "station_id",
+                "station__external_station_id",
+                "station__name",
+                "station__country",
+                "station__water_type",
+                "station__water_body_name",
+                "station__main_basin",
+                "station__latitude",
+                "station__longitude",
+                "station__local_station_number",
+                "name",
+                "source",
+                "temperature",
+                "ph",
+                "pollutants_data",
+                "sample_date",
+                "sample_time",
+                "depth",
+                "created_at",
+                "is_public",
+            ),
+            pk=self.kwargs["pk"],
         )
+        if measurement.owner_id != self.request.user.id and not measurement.is_public:
+            raise NotFound("Measurement not found.")
+        return measurement
 
 
 class WaterMeasurementMapView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        queryset = WaterMeasurement.objects.filter(
-            is_public=True,
-            source=WaterMeasurement.SOURCE_GEMSTAT,
-        ).order_by("external_station_id", "-sample_date", "-sample_time", "-created_at")
+        queryset = (
+            Station.objects.filter(source_dataset="gemstat")
+            .only(
+                "external_station_id",
+                "name",
+                "source_dataset",
+                "country",
+                "water_type",
+                "water_body_name",
+                "main_basin",
+                "latitude",
+                "longitude",
+                "local_station_number",
+                "measurement_count",
+                "latest_measurement_id",
+                "latest_sample_date",
+                "latest_sample_time",
+            )
+            .order_by("name", "external_station_id")
+        )
 
-        locations = {}
-        for measurement in queryset:
-            location_id = measurement.external_station_id or measurement.sample_location.get("station_id")
-            latitude = measurement.sample_location.get("latitude")
-            longitude = measurement.sample_location.get("longitude")
-            if not location_id or latitude is None or longitude is None:
-                continue
-
-            if location_id not in locations:
-                locations[location_id] = {
-                    "locationId": location_id,
-                    "name": measurement.sample_location.get("station_identifier") or measurement.name,
-                    "source": measurement.source,
-                    "latitude": latitude,
-                    "longitude": longitude,
-                    "measurementCount": 0,
-                    "latestMeasurementId": measurement.id,
-                    "latestSampleDate": measurement.sample_date,
-                    "latestSampleTime": measurement.sample_time,
-                    "sampleLocation": measurement.sample_location,
-                }
-            locations[location_id]["measurementCount"] += 1
-
-        serializer = WaterMeasurementLocationSerializer(list(locations.values()), many=True)
+        serializer = StationMapSerializer(queryset, many=True)
         return Response({"results": serializer.data, "count": len(serializer.data)})
 
 
@@ -95,24 +145,53 @@ class WaterMeasurementLocationDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, location_id):
+        station = Station.objects.only(
+            "id",
+            "external_station_id",
+            "name",
+            "country",
+            "water_type",
+            "water_body_name",
+            "main_basin",
+            "latitude",
+            "longitude",
+            "local_station_number",
+        ).filter(
+            source_dataset="gemstat",
+            external_station_id=location_id,
+        ).first()
+        if not station:
+            raise NotFound("Location not found.")
+
         measurements = list(
             WaterMeasurement.objects.filter(
                 is_public=True,
-                source=WaterMeasurement.SOURCE_GEMSTAT,
-                external_station_id=location_id,
-            ).order_by("-sample_date", "-sample_time", "-created_at")
+                station=station,
+            )
+            .only(
+                "id",
+                "name",
+                "sample_date",
+                "sample_time",
+                "depth",
+                "temperature",
+                "ph",
+                "pollutants_data",
+            )
+            .order_by("-sample_date", "-sample_time", "-created_at")
         )
         if not measurements:
             raise NotFound("Location not found.")
 
-        first = measurements[0]
-        serializer = WaterMeasurementLocationMeasurementSerializer(measurements, many=True)
+        serializer = StationMeasurementSerializer(measurements, many=True)
         return Response(
             {
-                "locationId": location_id,
-                "name": first.sample_location.get("station_identifier") or first.name,
-                "sampleLocation": first.sample_location,
+                "stationId": station.external_station_id,
+                "locationId": station.external_station_id,
+                "name": station.name,
+                "sampleLocation": station.location_payload,
                 "measurementCount": len(measurements),
+                "station": StationSummarySerializer(station).data,
                 "measurements": serializer.data,
             }
         )
@@ -132,7 +211,6 @@ class WaterMeasurementCsvImportView(APIView):
             "temperature": parsed["temperature"],
             "ph": parsed["ph"],
             "parameters": parsed["parameters"],
-            "raw_import_data": {"imported_from": "csv_upload"},
         }
         serializer = WaterMeasurementCreateSerializer(data=payload, context={"request": request})
         serializer.is_valid(raise_exception=True)

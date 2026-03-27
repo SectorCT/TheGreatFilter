@@ -17,15 +17,19 @@ from services.quantum_engine import compute_binding_energy
 
 logger = logging.getLogger("h2osim.ga")
 
-# Gene bounds: [pore_size_nm, layer_thickness_nm, material_idx]
+# Gene bounds: [pore_size_nm, layer_thickness_nm, material_idx,
+#               functionalization_density, doping_level]
 GENE_BOUNDS = [
-    (0.3, 2.0),    # pore_size in nm
-    (0.5, 5.0),    # layer_thickness in nm
-    (0.0, 1.0),    # material_type index (0=graphene, 1=CNT)
+    (0.3,  2.0),   # pore_size in nm
+    (0.5,  5.0),   # layer_thickness in nm
+    (0.0,  4.0),   # material_type index (0-4, rounded to int)
+    (0.3,  0.9),   # functionalization_density: fraction of edge atoms functionalized
+    (0.05, 0.30),  # doping_level: fraction of C replaced by pyridinic N
 ]
 
-MATERIAL_TYPES = ["graphene", "cnt"]
-LATTICE_SPACING = 2.46  # Å — graphene C-C bond length (physical constant)
+# Must match generate_atom_positions dispatcher order
+MATERIAL_TYPES = ["graphene", "cnt", "graphene_oxide", "composite", "mof_like"]
+LATTICE_SPACING = 2.46  # Å — graphene lattice constant (physical constant)
 
 
 def _init_individual(icls):
@@ -156,12 +160,16 @@ def optimize_filter(
 
     material_idx = int(round(best[2]))
     material_idx = max(0, min(material_idx, len(MATERIAL_TYPES) - 1))
+    func_density = round(max(GENE_BOUNDS[3][0], min(GENE_BOUNDS[3][1], best[3])), 4)
+    doping       = round(max(GENE_BOUNDS[4][0], min(GENE_BOUNDS[4][1], best[4])), 4)
 
     return {
         "pore_size": round(best[0], 4),
         "layer_thickness": round(best[1], 4),
         "lattice_spacing": LATTICE_SPACING,
         "material_type": MATERIAL_TYPES[material_idx],
+        "functionalization_density": func_density,
+        "doping_level": doping,
         "binding_energy": final_result["binding_energy"],
         "removal_efficiency": final_result["removal_efficiency"],
         "converged": final_result["converged"],

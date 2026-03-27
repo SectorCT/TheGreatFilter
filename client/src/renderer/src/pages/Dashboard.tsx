@@ -189,37 +189,7 @@ export function Dashboard(): React.JSX.Element {
           </div>
         </div>
 
-        <div className="space-y-6 xl:col-span-2">
-          <div className="rounded-[6px] border border-border bg-card">
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <h2 className="text-sm font-semibold">Quantum Queue</h2>
-              <span className="scientific-label">VQE</span>
-            </div>
-            <div className="divide-y divide-border">
-              {[
-                { id: 'F-002', progress: 72, stage: 'Hamiltonian assembly' },
-                { id: 'F-003', progress: 41, stage: 'Energy minimization' },
-                { id: 'F-006', progress: 14, stage: 'Preparing ansatz' }
-              ].map((item) => (
-                <div key={item.id} className="px-4 py-3">
-                  <div className="mb-1 flex items-center justify-between">
-                    <span className="font-mono text-xs">{item.id}</span>
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {item.progress}%
-                    </span>
-                  </div>
-                  <div className="h-1.5 rounded-[6px] bg-muted">
-                    <div
-                      className="h-full rounded-[6px] bg-status-generating"
-                      style={{ width: `${item.progress}%` }}
-                    />
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{item.stage}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
+        <div className="xl:col-span-2">
           <div className="rounded-[6px] border border-border bg-card">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <h2 className="text-sm font-semibold">Measurements</h2>

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { ArrowLeft, Loader2, Upload } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import * as $3Dmol from '3dmol'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
+import { Button } from '@renderer/components/ui/button'
 import { getFilterDetails } from '@renderer/utils/api/endpoints'
 import type { FilterInfo } from '@renderer/utils/api/types'
 import { atomPositionsToXyz, buildFilterInfoViewModel } from '@renderer/utils/filterInfoViewModel'
@@ -12,6 +13,9 @@ type SelectedAtomInfo = {
   element: string
   bonds: number
   bondTargets: string
+  x: number
+  y: number
+  z: number
 }
 type ClickableAtom = {
   serial?: number
@@ -31,7 +35,126 @@ type ModelAtom = {
   bondOrder: number[]
 }
 
+const toRecord = (value: unknown): Record<string, unknown> | null => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+const toFiniteNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined
+
+const toStringOrUndefined = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim().length > 0 ? value : undefined
+
+const normalizeAtomPositions = (
+  value: unknown,
+): Array<{ id?: string | number; x: number; y: number; z: number; element: string }> | undefined => {
+  if (!Array.isArray(value)) return undefined
+  const atoms: Array<{ id?: string | number; x: number; y: number; z: number; element: string }> = []
+  for (const entry of value) {
+    const item = toRecord(entry)
+    if (!item) continue
+    const x = toFiniteNumber(item.x)
+    const y = toFiniteNumber(item.y)
+    const z = toFiniteNumber(item.z)
+    const element = toStringOrUndefined(item.element)
+    if (x == null || y == null || z == null || !element) continue
+    atoms.push({
+      id: typeof item.id === 'string' || typeof item.id === 'number' ? item.id : undefined,
+      x,
+      y,
+      z,
+      element,
+    })
+  }
+  return atoms
+}
+
+const normalizeConnections = (
+  value: unknown,
+): Array<{ from: string | number; to: string | number; order?: number }> | undefined => {
+  if (!Array.isArray(value)) return undefined
+  const connections: Array<{ from: string | number; to: string | number; order?: number }> = []
+  for (const entry of value) {
+    const item = toRecord(entry)
+    if (!item) continue
+    const from = item.from
+    const to = item.to
+    if ((typeof from !== 'string' && typeof from !== 'number') || (typeof to !== 'string' && typeof to !== 'number')) {
+      continue
+    }
+    const order = toFiniteNumber(item.order)
+    connections.push({ from, to, order })
+  }
+  return connections
+}
+
+const normalizeImportedFilterInfo = (payload: unknown): FilterInfo => {
+  const parsed = toRecord(payload)
+  if (!parsed) throw new Error('JSON root must be an object.')
+
+  const rawFilterInfo = toRecord(parsed.filterInfo) ?? parsed
+  const nestedFilterStructure = toRecord(rawFilterInfo.filterStructure)
+  const nestedResultPayload = toRecord(rawFilterInfo.resultPayload)
+  const nestedExperimentPayload = toRecord(rawFilterInfo.experimentPayload)
+  const nestedSummaryMetrics = toRecord(rawFilterInfo.summaryMetrics)
+
+  const filterStructure = {
+    ...(nestedFilterStructure ?? {}),
+    poreSize: toFiniteNumber(nestedFilterStructure?.poreSize) ?? toFiniteNumber(rawFilterInfo.poreSize),
+    layerThickness:
+      toFiniteNumber(nestedFilterStructure?.layerThickness) ?? toFiniteNumber(rawFilterInfo.layerThickness),
+    latticeSpacing:
+      toFiniteNumber(nestedFilterStructure?.latticeSpacing) ?? toFiniteNumber(rawFilterInfo.latticeSpacing),
+    materialType:
+      toStringOrUndefined(nestedFilterStructure?.materialType) ?? toStringOrUndefined(rawFilterInfo.materialType),
+    atomPositions: normalizeAtomPositions(nestedFilterStructure?.atomPositions ?? rawFilterInfo.atomPositions),
+    connections: normalizeConnections(nestedFilterStructure?.connections ?? rawFilterInfo.connections)
+  }
+
+  const resultPayload = {
+    ...(nestedResultPayload ?? {}),
+    bindingEnergy:
+      toFiniteNumber(nestedResultPayload?.bindingEnergy) ?? toFiniteNumber(rawFilterInfo.bindingEnergy),
+    removalEfficiency:
+      toFiniteNumber(nestedResultPayload?.removalEfficiency) ?? toFiniteNumber(rawFilterInfo.removalEfficiency),
+    pollutant: toStringOrUndefined(nestedResultPayload?.pollutant) ?? toStringOrUndefined(rawFilterInfo.pollutant),
+    pollutantSymbol:
+      toStringOrUndefined(nestedResultPayload?.pollutantSymbol) ??
+      toStringOrUndefined(rawFilterInfo.pollutantSymbol),
+  }
+
+  const normalized: FilterInfo = {
+    filterStructure,
+    resultPayload,
+    experimentPayload: nestedExperimentPayload ?? undefined,
+    summaryMetrics: nestedSummaryMetrics ?? undefined,
+  }
+
+  const hasCoordinates =
+    Array.isArray(filterStructure.atomPositions) && filterStructure.atomPositions.length > 0
+  const hasAnyMetric =
+    typeof filterStructure.materialType === 'string' ||
+    typeof filterStructure.poreSize === 'number' ||
+    typeof resultPayload.bindingEnergy === 'number' ||
+    typeof resultPayload.removalEfficiency === 'number'
+
+  if (!hasCoordinates && !hasAnyMetric) {
+    throw new Error('JSON does not contain recognizable filter visualization fields.')
+  }
+
+  return normalized
+}
+
 const BASE_ELEMENTS = ['C', 'N', 'O', 'S', 'H'] as const
+const BASE_STYLE = { stick: { radius: 0.06 }, sphere: { scale: 0.15 } }
+const ELEMENT_LABELS: Record<string, string> = {
+  C: 'Carbon (black)',
+  O: 'Oxygen (red)',
+  N: 'Nitrogen (blue)',
+  S: 'Sulfur (yellow)',
+  H: 'Hydrogen (white)'
+}
 
 function randomFrom<T>(values: readonly T[]): T {
   return values[Math.floor(Math.random() * values.length)]
@@ -77,15 +200,20 @@ export function FilterVisualization(): React.JSX.Element {
   const navigate = useNavigate()
   const { id } = useParams()
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const viewerRef = useRef<ReturnType<typeof $3Dmol.createViewer> | null>(null)
+  const lastAtomClickRef = useRef(0)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [seed] = useState(() => Date.now())
   const [selectedAtom, setSelectedAtom] = useState<SelectedAtomInfo | null>(null)
   const [loading, setLoading] = useState(Boolean(id))
   const [filterInfo, setFilterInfo] = useState<FilterInfo | null>(null)
-  const [error, setError] = useState<string | null>(id ? null : 'Missing filter ID.')
+  const [error, setError] = useState<string | null>(null)
+  const [loadedFromName, setLoadedFromName] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     if (!id) {
+      setLoading(false)
       return
     }
     getFilterDetails(id)
@@ -106,7 +234,25 @@ export function FilterVisualization(): React.JSX.Element {
     }
   }, [id])
 
+  const onImportJson = async (file: File): Promise<void> => {
+    setError(null)
+    setSelectedAtom(null)
+    try {
+      const text = await file.text()
+      const parsed = JSON.parse(text) as unknown
+      const importedInfo = normalizeImportedFilterInfo(parsed)
+      setFilterInfo(importedInfo)
+      setLoadedFromName(file.name)
+      setLoading(false)
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : 'Failed to parse filter JSON.')
+    }
+  }
+
   const vm = useMemo(() => buildFilterInfoViewModel(filterInfo), [filterInfo])
+  const filterStructure = filterInfo?.filterStructure
+  const experimentPayload = filterInfo?.experimentPayload
+  const resultPayload = filterInfo?.resultPayload
   const usingRealStructure = vm.atomPositions.length > 0
   const hasExplicitConnections = vm.atomConnections.length > 0
   const rawXyz = useMemo(
@@ -142,31 +288,89 @@ export function FilterVisualization(): React.JSX.Element {
     }
     return atoms
   }, [hasExplicitConnections, vm.atomConnections, vm.atomPositions])
+  const elementCounts = useMemo(() => {
+    const source = vm.atomPositions
+    const counts = new Map<string, number>()
+    for (const atom of source) {
+      const key = atom.element || 'Unknown'
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+  }, [vm.atomPositions])
+
+  const resetSelection = (): void => {
+    setSelectedAtom(null)
+    if (viewerRef.current) {
+      viewerRef.current.setStyle({}, BASE_STYLE)
+      ;(viewerRef.current as unknown as { setColorByElement?: (sel: object, colors: Record<string, string>) => void })
+        .setColorByElement?.({}, { C: '#424242' })
+    }
+    viewerRef.current?.removeAllLabels()
+    viewerRef.current?.render()
+  }
 
   useEffect(() => {
     if (loading) return
     if (!containerRef.current) return
 
     const viewer = $3Dmol.createViewer(containerRef.current, {
-      backgroundColor: '#0b0f17'
+      backgroundColor: "#F9F8F6"
     })
+    viewerRef.current = viewer
     if (modelAtoms) {
       const model = viewer.addModel()
       model.addAtoms(modelAtoms)
     } else {
       viewer.addModel(xyz, 'xyz')
     }
-    viewer.setStyle({}, { stick: { radius: 0.06 }, sphere: { scale: 0.15 } })
+    viewer.setStyle({}, BASE_STYLE)
+    ;(viewer as unknown as { setColorByElement?: (sel: object, colors: Record<string, string>) => void })
+      .setColorByElement?.({}, { C: '#424242' })
     viewer.setClickable({}, true, (atom: ClickableAtom) => {
+      lastAtomClickRef.current = Date.now()
       const atomIndex = typeof atom?.serial === 'number' ? atom.serial : (atom?.index ?? '?')
       const targets = Array.isArray(atom?.bonds) ? atom.bonds.slice(0, 8).join(', ') : 'None'
       setSelectedAtom({
         index: atomIndex,
         element: atom?.elem ?? 'Unknown',
         bonds: Array.isArray(atom?.bonds) ? atom.bonds.length : 0,
-        bondTargets: targets.length > 0 ? targets : 'None'
+        bondTargets: targets.length > 0 ? targets : 'None',
+        x: atom.x,
+        y: atom.y,
+        z: atom.z
       })
       viewer.removeAllLabels()
+      viewer.setStyle({}, BASE_STYLE)
+      ;(viewer as unknown as { setColorByElement?: (sel: object, colors: Record<string, string>) => void })
+        .setColorByElement?.({}, { C: '#424242' })
+      if (typeof atom?.serial === 'number') {
+        viewer.setStyle(
+          { serial: atom.serial },
+          {
+            sphere: { scale: 0.34 },
+            stick: { radius: 0.12 }
+          }
+        )
+      } else if (typeof atom?.index === 'number') {
+        viewer.setStyle(
+          { index: atom.index },
+          {
+            sphere: { scale: 0.34 },
+            stick: { radius: 0.12 }
+          }
+        )
+      }
+      if (Array.isArray(atom?.bonds) && atom.bonds.length > 0) {
+        viewer.setStyle(
+          { index: atom.bonds as number[] },
+          {
+            sphere: { scale: 0.21 },
+            stick: { radius: 0.09 }
+          }
+        )
+      }
       viewer.addLabel(`${atom?.elem ?? 'X'} (#${atomIndex})`, {
         position: { x: atom.x, y: atom.y, z: atom.z },
         backgroundColor: '#111827',
@@ -192,8 +396,15 @@ export function FilterVisualization(): React.JSX.Element {
     return () => {
       window.removeEventListener('resize', onResize)
       viewer.clear()
+      viewerRef.current = null
     }
   }, [xyz, loading, atomCount, modelAtoms])
+
+  const handleViewerClick = (): void => {
+    if (!selectedAtom) return
+    if (Date.now() - lastAtomClickRef.current < 120) return
+    resetSelection()
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden p-4 md:p-6 lg:p-8">
@@ -201,15 +412,35 @@ export function FilterVisualization(): React.JSX.Element {
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <button
-            onClick={() => navigate(`/filters/${id}`)}
+            onClick={() => (id ? navigate(`/filters/${id}`) : navigate('/filters'))}
             className="rounded-[6px] p-1.5 transition-colors hover:bg-secondary"
           >
             <ArrowLeft size={16} strokeWidth={1.5} />
           </button>
           <div>
             <h1 className="text-xl font-semibold">Filter Visualization</h1>
-            <p className="font-mono text-xs text-muted-foreground">Filter {id ?? '-'}</p>
+            <p className="font-mono text-xs text-muted-foreground">
+              {loadedFromName ? `Imported JSON: ${loadedFromName}` : `Filter ${id ?? '-'}`}
+            </p>
           </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (!file) return
+              void onImportJson(file)
+              event.target.value = ''
+            }}
+          />
+          <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+            <Upload size={16} strokeWidth={1.5} />
+            Visualize from JSON
+          </Button>
         </div>
       </div>
       {error ? (
@@ -226,8 +457,8 @@ export function FilterVisualization(): React.JSX.Element {
       {!loading ? (
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden xl:grid-cols-[minmax(0,1fr)_320px]">
         <section className="flex min-h-0 flex-col gap-4 overflow-hidden">
-          <div className="relative min-h-0 flex-1 overflow-hidden rounded-[8px] border border-border bg-black">
-            <div ref={containerRef} className="absolute inset-0" />
+          <div className="relative min-h-0 flex-1 overflow-hidden rounded-[8px] bg-black">
+            <div ref={containerRef} className="absolute inset-0" onClick={handleViewerClick} />
           </div>
           <div className="h-36 shrink-0 overflow-y-auto rounded-[8px] border border-border bg-card p-4">
             <h2 className="mb-2 text-sm font-semibold">Structure Description</h2>
@@ -243,15 +474,35 @@ export function FilterVisualization(): React.JSX.Element {
                 <p>
                   Bonded atom indexes: <span className="font-mono text-foreground">{selectedAtom.bondTargets}</span>
                 </p>
+                <p>
+                  Position (A):{' '}
+                  <span className="font-mono text-foreground">
+                    {selectedAtom.x.toFixed(3)}, {selectedAtom.y.toFixed(3)}, {selectedAtom.z.toFixed(3)}
+                  </span>
+                </p>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                {usingRealStructure
-                  ? hasExplicitConnections
-                    ? 'Structure loaded from backend atoms + explicit connections. Click any atom in the 3D view to inspect its element and connectivity.'
-                    : 'Structure loaded from backend atomPositions. Click any atom in the 3D view to inspect its element and connectivity.'
-                  : 'Backend atomPositions were missing, so a generated fallback structure is shown. Click any atom in the 3D view to inspect it.'}
-              </p>
+              <div className="space-y-1 text-sm text-muted-foreground">
+                <p>
+                  {usingRealStructure
+                    ? hasExplicitConnections
+                      ? 'Structure loaded from backend atom coordinates with explicit connection graph.'
+                      : 'Structure loaded from backend atom coordinates with inferred connectivity.'
+                    : 'Backend atom coordinates unavailable, so a generated fallback topology is shown.'}
+                </p>
+                <p>
+                  Material:{' '}
+                  <span className="font-mono text-foreground">{vm.metrics.materialType}</span> | Pore Size:{' '}
+                  <span className="font-mono text-foreground">
+                    {vm.metrics.poreSize != null ? `${vm.metrics.poreSize.toFixed(3)} nm` : 'n/a'}
+                  </span>{' '}
+                  | Removal:{' '}
+                  <span className="font-mono text-foreground">
+                    {vm.metrics.removalEfficiency != null ? `${vm.metrics.removalEfficiency.toFixed(2)}%` : 'n/a'}
+                  </span>
+                </p>
+                <p>Click an atom to inspect it. Click empty space to return to this summary.</p>
+              </div>
             )}
           </div>
         </section>
@@ -259,21 +510,16 @@ export function FilterVisualization(): React.JSX.Element {
         <aside className="min-h-0 overflow-y-auto rounded-[8px] border border-border bg-card p-4">
           <h2 className="mb-3 text-sm font-semibold">Legend</h2>
           <div className="space-y-2 text-sm">
-            <p className="text-muted-foreground">
-              <span className="font-medium text-foreground">C</span> Carbon (gray)
-            </p>
-            <p className="text-muted-foreground">
-              <span className="font-medium text-foreground">O</span> Oxygen (red)
-            </p>
-            <p className="text-muted-foreground">
-              <span className="font-medium text-foreground">N</span> Nitrogen (blue)
-            </p>
-            <p className="text-muted-foreground">
-              <span className="font-medium text-foreground">S</span> Sulfur (yellow)
-            </p>
-            <p className="text-muted-foreground">
-              <span className="font-medium text-foreground">H</span> Hydrogen (white)
-            </p>
+            {elementCounts.length > 0 ? (
+              elementCounts.map(([element]) => (
+                <p key={`legend-${element}`} className="text-muted-foreground">
+                  <span className="font-medium text-foreground">{element}</span>{' '}
+                  {ELEMENT_LABELS[element] ?? 'Element'}
+                </p>
+              ))
+            ) : (
+              <p className="text-muted-foreground">No elements available.</p>
+            )}
           </div>
 
           <div className="my-4 border-t border-border" />
@@ -307,6 +553,101 @@ export function FilterVisualization(): React.JSX.Element {
               </span>
             </p>
           </div>
+
+          <div className="my-4 border-t border-border" />
+
+          <h3 className="mb-2 text-sm font-semibold">Filter Metrics</h3>
+          <div className="space-y-1 text-sm text-muted-foreground">
+            <p>
+              Material: <span className="font-mono text-foreground">{vm.metrics.materialType}</span>
+            </p>
+            <p>
+              Pore Size:{' '}
+              <span className="font-mono text-foreground">
+                {vm.metrics.poreSize != null ? `${vm.metrics.poreSize.toFixed(3)} nm` : 'n/a'}
+              </span>
+            </p>
+            <p>
+              Layer Thickness:{' '}
+              <span className="font-mono text-foreground">
+                {vm.metrics.layerThickness != null ? `${vm.metrics.layerThickness.toFixed(3)} nm` : 'n/a'}
+              </span>
+            </p>
+            <p>
+              Lattice Spacing:{' '}
+              <span className="font-mono text-foreground">
+                {vm.metrics.latticeSpacing != null ? `${vm.metrics.latticeSpacing.toFixed(3)} A` : 'n/a'}
+              </span>
+            </p>
+            <p>
+              Binding Energy:{' '}
+              <span className="font-mono text-foreground">
+                {vm.metrics.bindingEnergy != null ? `${vm.metrics.bindingEnergy.toFixed(4)} eV` : 'n/a'}
+              </span>
+            </p>
+            <p>
+              Removal Efficiency:{' '}
+              <span className="font-mono text-foreground">
+                {vm.metrics.removalEfficiency != null ? `${vm.metrics.removalEfficiency.toFixed(2)}%` : 'n/a'}
+              </span>
+            </p>
+            <p>
+              Pollutant: <span className="font-mono text-foreground">{vm.metrics.pollutant}</span>
+            </p>
+          </div>
+
+          <div className="my-4 border-t border-border" />
+
+          <h3 className="mb-2 text-sm font-semibold">Sample Conditions</h3>
+          <div className="space-y-1 text-sm text-muted-foreground">
+            <p>
+              Temperature:{' '}
+              <span className="font-mono text-foreground">
+                {vm.metrics.temperature != null ? `${vm.metrics.temperature.toFixed(2)} C` : 'n/a'}
+              </span>
+            </p>
+            <p>
+              pH: <span className="font-mono text-foreground">{vm.metrics.ph != null ? vm.metrics.ph.toFixed(2) : 'n/a'}</span>
+            </p>
+            <p>
+              Parameters: <span className="font-mono text-foreground">{vm.metrics.parameterCount}</span>
+            </p>
+          </div>
+
+          <div className="my-4 border-t border-border" />
+
+          <h3 className="mb-2 text-sm font-semibold">Element Composition</h3>
+          <div className="space-y-1 text-sm text-muted-foreground">
+            {elementCounts.length > 0 ? (
+              elementCounts.map(([element, count]) => (
+                <p key={element}>
+                  {element}: <span className="font-mono text-foreground">{count}</span>
+                </p>
+              ))
+            ) : (
+              <p>No atomic composition available.</p>
+            )}
+          </div>
+
+          {(filterStructure || experimentPayload || resultPayload) ? (
+            <>
+              <div className="my-4 border-t border-border" />
+              <h3 className="mb-2 text-sm font-semibold">Payload Availability</h3>
+              <div className="space-y-1 text-sm text-muted-foreground">
+                <p>
+                  filterStructure:{' '}
+                  <span className="font-mono text-foreground">{filterStructure ? 'present' : 'missing'}</span>
+                </p>
+                <p>
+                  experimentPayload:{' '}
+                  <span className="font-mono text-foreground">{experimentPayload ? 'present' : 'missing'}</span>
+                </p>
+                <p>
+                  resultPayload: <span className="font-mono text-foreground">{resultPayload ? 'present' : 'missing'}</span>
+                </p>
+              </div>
+            </>
+          ) : null}
         </aside>
       </div>
       ) : null}

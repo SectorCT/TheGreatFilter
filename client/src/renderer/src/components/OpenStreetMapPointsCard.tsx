@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { divIcon, point } from 'leaflet'
-import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
+import { MapContainer, Marker, TileLayer } from 'react-leaflet'
 import type { LatLngBoundsExpression } from 'leaflet'
 import { useMap } from 'react-leaflet'
 import MarkerClusterGroup from 'react-leaflet-cluster'
@@ -40,11 +40,6 @@ const getDefaultCenter = (points: GemstatLocation[]): [number, number] => {
     (p) => typeof p.latitude === 'number' && typeof p.longitude === 'number'
   )
   return first ? [first.latitude, first.longitude] : [42.6977, 23.3219]
-}
-
-const getPopupText = (p: GemstatLocation): string => {
-  const parts = [p.stationNarrative ?? p.waterBodyName ?? '']
-  return parts.filter(Boolean).join(' • ')
 }
 
 const getBoundsExpression = (points: GemstatLocation[]): LatLngBoundsExpression | null => {
@@ -104,19 +99,14 @@ function InvalidateOnResize(): null {
 }
 
 const getWrappedRenderPoints = (points: GemstatLocation[]): RenderPoint[] => {
-  const copies: RenderPoint[] = []
+  const renderPoints: RenderPoint[] = []
   for (const p of points) {
     const lat = p.latitude
     const lon = p.longitude
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue
-
-    copies.push(
-      { key: `${p.locationId}-w-1`, lat, lon: lon - 360, source: p },
-      { key: `${p.locationId}-w0`, lat, lon, source: p },
-      { key: `${p.locationId}-w1`, lat, lon: lon + 360, source: p }
-    )
+    renderPoints.push({ key: `${p.locationId}-w0`, lat, lon, source: p })
   }
-  return copies
+  return renderPoints
 }
 
 export default function OpenStreetMapPointsCard({
@@ -128,6 +118,22 @@ export default function OpenStreetMapPointsCard({
   const renderPoints = useMemo(() => getWrappedRenderPoints(points), [points])
   const [tilesFailed, setTilesFailed] = useState(false)
   const [tilesLoading, setTilesLoading] = useState(true)
+  const lastSelectRef = useRef<{ locationId: string; atMs: number } | null>(null)
+
+  const emitSelectPoint = useCallback(
+    (point: GemstatLocation): void => {
+      const now = Date.now()
+      const last = lastSelectRef.current
+      // One gesture can trigger multiple Leaflet events (touchstart/mousedown/click).
+      // Debounce identical station selections very briefly to prevent duplicate callbacks.
+      if (last && last.locationId === point.locationId && now - last.atMs < 300) {
+        return
+      }
+      lastSelectRef.current = { locationId: point.locationId, atMs: now }
+      onSelectPoint?.(point)
+    },
+    [onSelectPoint],
+  )
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
@@ -179,13 +185,14 @@ export default function OpenStreetMapPointsCard({
               position={[p.lat, p.lon]}
               icon={selectedLocationId === p.source.locationId ? SELECTED_POINT_ICON : POINT_ICON}
               eventHandlers={{
+                mousedown: () => {
+                  emitSelectPoint(p.source)
+                },
                 click: () => {
-                  onSelectPoint?.(p.source)
+                  emitSelectPoint(p.source)
                 },
               }}
-            >
-              <Popup>{getPopupText(p.source) || p.source.locationId}</Popup>
-            </Marker>
+            />
           ))}
         </MarkerClusterGroup>
       </MapContainer>

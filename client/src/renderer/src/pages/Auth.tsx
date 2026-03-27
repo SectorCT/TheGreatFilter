@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@renderer/components/ui/button'
+import { ApiError } from '@renderer/utils/api/makeAuthenticatedReq'
 import { getAccessToken, login, signup } from '@renderer/utils/api'
 
 export function Auth(): React.JSX.Element {
@@ -11,6 +12,26 @@ export function Auth(): React.JSX.Element {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
+
+  const getAuthErrorMessage = (submitError: unknown): string => {
+    if (submitError instanceof ApiError) {
+      const bodyText = submitError.responseBodyText
+      if (bodyText) {
+        try {
+          const parsed = JSON.parse(bodyText) as { message?: string; detail?: string }
+          if (parsed.message && parsed.message.trim().length > 0) return parsed.message
+          if (parsed.detail && parsed.detail.trim().length > 0) return parsed.detail
+        } catch {
+          // Not JSON; fall back to HTTP status below.
+        }
+      }
+      return `Authentication failed (HTTP ${submitError.status}).`
+    }
+    if (submitError instanceof Error && submitError.message.trim().length > 0) {
+      return submitError.message
+    }
+    return 'Authentication failed. Check credentials and try again.'
+  }
 
   useEffect(() => {
     const existingToken = getAccessToken()
@@ -47,7 +68,7 @@ export function Auth(): React.JSX.Element {
       navigate('/dashboard')
     } catch (submitError) {
       console.error(submitError)
-      setError('Authentication failed. Check credentials and try again.')
+      setError(getAuthErrorMessage(submitError))
     } finally {
       setIsSubmitting(false)
     }

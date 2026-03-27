@@ -4,9 +4,10 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
+from django.db.models import Count, OuterRef, Q, Subquery
 from django.utils import timezone
 
-from measurements.models import MeasurementImportRun, WaterMeasurement
+from measurements.models import MeasurementImportRun, Station, WaterMeasurement
 
 
 def read_text_with_fallback(path):
@@ -49,6 +50,22 @@ def build_source_key(station_id, sample_date, sample_time, depth):
     )
 
 
+def build_station_payload(station_id, station_metadata):
+    station_metadata = station_metadata or {}
+    return {
+        "source_dataset": "gemstat",
+        "external_station_id": station_id,
+        "name": normalize_text(station_metadata.get("station_identifier")) or station_id,
+        "local_station_number": normalize_text(station_metadata.get("local_station_number")) or "",
+        "country": normalize_text(station_metadata.get("country")) or "",
+        "water_type": normalize_text(station_metadata.get("water_type")) or "",
+        "water_body_name": normalize_text(station_metadata.get("water_body_name")) or "",
+        "main_basin": normalize_text(station_metadata.get("main_basin")) or "",
+        "latitude": normalize_decimal(station_metadata.get("latitude")),
+        "longitude": normalize_decimal(station_metadata.get("longitude")),
+    }
+
+
 def load_station_metadata(dataset_dir):
     station_file = Path(dataset_dir) / "GEMStat_station_metadata.csv"
     stations = {}
@@ -65,7 +82,6 @@ def load_station_metadata(dataset_dir):
             "country": normalize_text(row.get("Country Name")),
             "water_type": normalize_text(row.get("Water Type")),
             "station_identifier": normalize_text(row.get("Station Identifier")),
-            "station_narrative": normalize_text(row.get("Station Narrative")),
             "water_body_name": normalize_text(row.get("Water Body Name")),
             "main_basin": normalize_text(row.get("Main Basin")),
             "latitude": latitude,
@@ -125,7 +141,6 @@ def parse_uploaded_measurement_csv(file_obj):
                     "parameterName": name,
                     "unit": unit,
                     "value": value,
-                    "file": None,
                 }
             )
 
@@ -136,7 +151,47 @@ def parse_uploaded_measurement_csv(file_obj):
     }
 
 
-def sync_gemstat_measurements(dataset_dir, import_run=None, included_filenames=None, max_snapshots=None):
+def refresh_station_summaries(station_ids=None):
+    latest_measurements = WaterMeasurement.objects.filter(
+        station=OuterRef("pk"),
+        is_public=True,
+    ).order_by("-sample_date", "-sample_time", "-created_at")
+
+    stations = Station.objects.filter(source_dataset="gemstat")
+    if station_ids is not None:
+        stations = stations.filter(id__in=station_ids)
+
+    annotated_stations = stations.annotate(
+        public_measurement_count=Count("measurements", filter=Q(measurements__is_public=True)),
+        latest_measurement_id=Subquery(latest_measurements.values("id")[:1]),
+        latest_sample_date=Subquery(latest_measurements.values("sample_date")[:1]),
+        latest_sample_time=Subquery(latest_measurements.values("sample_time")[:1]),
+    )
+
+    stations_to_update = []
+    for station in annotated_stations.iterator():
+        station.measurement_count = getattr(station, "public_measurement_count", 0) or 0
+        station.latest_measurement_id = getattr(station, "latest_measurement_id", None)
+        station.latest_sample_date = getattr(station, "latest_sample_date", None)
+        station.latest_sample_time = getattr(station, "latest_sample_time", None)
+        stations_to_update.append(station)
+
+    if stations_to_update:
+        Station.objects.bulk_update(
+            stations_to_update,
+            ["measurement_count", "latest_measurement_id", "latest_sample_date", "latest_sample_time"],
+        )
+    return len(stations_to_update)
+
+
+def sync_gemstat_measurements(
+    dataset_dir,
+    import_run=None,
+    included_filenames=None,
+    max_snapshots=None,
+    max_stations=None,
+    max_snapshots_per_station=None,
+):
     dataset_path = Path(dataset_dir)
     if import_run is None:
         import_run = MeasurementImportRun.objects.create(
@@ -146,18 +201,20 @@ def sync_gemstat_measurements(dataset_dir, import_run=None, included_filenames=N
 
     stations = load_station_metadata(dataset_path)
     parameter_metadata = load_parameter_metadata(dataset_path)
+    selected_station_ids = None
+    if max_stations:
+        selected_station_ids = set(sorted(stations.keys())[:max_stations])
 
     snapshots = defaultdict(
         lambda: {
-            "external_station_id": "",
+            "station_id": "",
             "sample_date": None,
             "sample_time": None,
             "depth": None,
-            "sample_location": {},
+            "station_payload": {},
             "temperature": None,
             "ph": None,
-            "parameters_data": {},
-            "raw_rows": [],
+            "pollutants_data": {},
         }
     )
 
@@ -174,6 +231,8 @@ def sync_gemstat_measurements(dataset_dir, import_run=None, included_filenames=N
             station_id = row.get("GEMS Station Number")
             if not station_id:
                 continue
+            if selected_station_ids is not None and station_id not in selected_station_ids:
+                continue
 
             sample_date = row.get("Sample Date") or row.get("Sample.Date")
             sample_time = row.get("Sample Time") or row.get("Sample.Time")
@@ -184,52 +243,72 @@ def sync_gemstat_measurements(dataset_dir, import_run=None, included_filenames=N
                 continue
 
             snapshot = snapshots[source_key]
-            snapshot["external_station_id"] = station_id
+            snapshot["station_id"] = station_id
             snapshot["sample_date"] = sample_date
             snapshot["sample_time"] = sample_time
             snapshot["depth"] = depth
-            snapshot["sample_location"] = stations.get(station_id, {"station_id": station_id})
+            snapshot["station_payload"] = build_station_payload(station_id, stations.get(station_id, {}))
 
             parameter_info = parameter_metadata.get(parameter_code, {})
             value = normalize_decimal(row.get("Value"))
             parameter_payload = {
-                "file": file_path.name,
                 "parameterCode": parameter_code,
                 "parameterName": parameter_info.get("parameter_name"),
                 "unit": normalize_text(row.get("Unit")),
                 "value": value,
-                "valueFlags": normalize_text(row.get("Value Flags") or row.get("Value.Flags")),
-                "dataQuality": normalize_text(row.get("Data Quality") or row.get("Data.Quality")),
-                "analysisMethodCode": normalize_text(
-                    row.get("Analysis Method Code") or row.get("Analysis.Method.Code")
-                ),
             }
 
             if parameter_code and value is not None:
-                snapshot["parameters_data"][parameter_code] = parameter_payload
+                if parameter_code.upper() == "TEMP":
+                    snapshot["temperature"] = value
+                elif parameter_code.lower() == "ph":
+                    snapshot["ph"] = value
+                else:
+                    snapshot["pollutants_data"][parameter_code] = parameter_payload
                 if parameter_code.upper() == "TEMP":
                     snapshot["temperature"] = value
                 elif parameter_code.lower() == "ph":
                     snapshot["ph"] = value
 
-            snapshot["raw_rows"].append(
-                {
-                    "file": file_path.name,
-                    "row": row,
-                }
-            )
-
     created = 0
     updated = 0
     skipped = 0
+    touched_station_ids = set()
 
-    for source_key, snapshot in snapshots.items():
-        location = snapshot["sample_location"]
+    snapshot_items = list(snapshots.items())
+    if max_snapshots_per_station:
+        grouped_snapshot_items = defaultdict(list)
+        for source_key, snapshot in snapshot_items:
+            grouped_snapshot_items[snapshot["station_id"]].append((source_key, snapshot))
+
+        snapshot_items = []
+        for station_id in sorted(grouped_snapshot_items.keys()):
+            station_snapshots = grouped_snapshot_items[station_id]
+            station_snapshots.sort(
+                key=lambda item: (
+                    item[1]["sample_date"] or "",
+                    item[1]["sample_time"] or "",
+                    item[1]["depth"] if item[1]["depth"] is not None else -1,
+                ),
+                reverse=True,
+            )
+            snapshot_items.extend(station_snapshots[:max_snapshots_per_station])
+
+    for source_key, snapshot in snapshot_items:
+        station, _ = Station.objects.update_or_create(
+            source_dataset=snapshot["station_payload"]["source_dataset"],
+            external_station_id=snapshot["station_payload"]["external_station_id"],
+            defaults=snapshot["station_payload"],
+        )
+        touched_station_ids.add(station.id)
         hash_payload = {
             "temperature": snapshot["temperature"],
             "ph": snapshot["ph"],
-            "parameters_data": snapshot["parameters_data"],
-            "sample_location": location,
+            "pollutants_data": snapshot["pollutants_data"],
+            "station_id": station.external_station_id,
+            "sample_date": snapshot["sample_date"],
+            "sample_time": snapshot["sample_time"],
+            "depth": snapshot["depth"],
         }
         import_hash = hashlib.sha256(
             json.dumps(hash_payload, sort_keys=True, default=str).encode("utf-8")
@@ -238,20 +317,18 @@ def sync_gemstat_measurements(dataset_dir, import_run=None, included_filenames=N
         defaults = {
             "owner": None,
             "name": (
-                f"{location.get('station_identifier') or snapshot['external_station_id']} "
+                f"{station.name} "
                 f"{snapshot['sample_date']} {snapshot['sample_time'] or ''}"
             ).strip(),
+            "station": station,
             "source": WaterMeasurement.SOURCE_GEMSTAT,
             "temperature": snapshot["temperature"],
             "ph": snapshot["ph"],
-            "parameters_data": snapshot["parameters_data"],
-            "sample_location": location,
-            "raw_import_data": {"rows": snapshot["raw_rows"][:25], "row_count": len(snapshot["raw_rows"])},
-            "source_dataset": "gemstat",
-            "external_station_id": snapshot["external_station_id"],
+            "pollutants_data": snapshot["pollutants_data"],
             "sample_date": snapshot["sample_date"],
             "sample_time": snapshot["sample_time"] or None,
             "depth": snapshot["depth"],
+            "source_key": source_key,
             "import_hash": import_hash,
             "is_public": True,
         }
@@ -272,6 +349,8 @@ def sync_gemstat_measurements(dataset_dir, import_run=None, included_filenames=N
             setattr(measurement, field, value)
         measurement.save()
         updated += 1
+
+    refresh_station_summaries(station_ids=touched_station_ids)
 
     import_run.files_seen = files_seen
     import_run.measurements_created = created

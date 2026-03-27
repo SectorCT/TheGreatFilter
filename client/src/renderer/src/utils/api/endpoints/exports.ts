@@ -22,7 +22,12 @@ const parseExportResponse = async (
   // Alternative contract: JSON payload containing a temporary download URL.
   const json = (await response.json()) as unknown
   if (isDownloadUrlJson(json)) {
-    return { kind: 'downloadUrl', downloadUrl: json.downloadUrl }
+    const downloadResponse = await fetch(json.downloadUrl)
+    if (!downloadResponse.ok) {
+      throw new Error(`Failed to fetch CSV from export URL (${downloadResponse.status})`)
+    }
+    const csvText = await downloadResponse.text()
+    return { kind: 'csvText', csvText }
   }
 
   throw new Error('Unexpected export response shape')
@@ -38,8 +43,8 @@ export const exportFilterCsv = async (
     authRequired: true,
     parseResponse: parseExportResponse,
     fake404: () => ({
-      kind: 'downloadUrl',
-      downloadUrl: `https://example.com/fake/filter-${filterId}.csv`
+      kind: 'csvText',
+      csvText: `filter_id,${filterId}\nstatus,fake\n`
     })
   })
 }

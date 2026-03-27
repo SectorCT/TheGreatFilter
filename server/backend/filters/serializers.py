@@ -12,12 +12,22 @@ from .models import GeneratedFilter
 class GeneratedFilterListSerializer(serializers.ModelSerializer):
     filterId = serializers.UUIDField(source="id", read_only=True)
     measurementId = serializers.UUIDField(source="measurement.id", read_only=True)
+    measurementName = serializers.CharField(source="measurement.name", read_only=True)
     studyId = serializers.UUIDField(source="study.id", read_only=True)
+    studyName = serializers.CharField(source="study.name", read_only=True)
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
 
     class Meta:
         model = GeneratedFilter
-        fields = ["filterId", "studyId", "measurementId", "createdAt", "status"]
+        fields = [
+            "filterId",
+            "studyId",
+            "studyName",
+            "measurementId",
+            "measurementName",
+            "createdAt",
+            "status",
+        ]
 
 
 class GenerateFilterSerializer(serializers.Serializer):
@@ -74,13 +84,24 @@ class GeneratedFilterStatusSerializer(serializers.ModelSerializer):
 class GeneratedFilterDetailSerializer(serializers.ModelSerializer):
     filterId = serializers.UUIDField(source="id", read_only=True)
     studyId = serializers.UUIDField(source="study.id", read_only=True)
+    studyName = serializers.CharField(source="study.name", read_only=True)
     measurementId = serializers.UUIDField(source="measurement.id", read_only=True)
+    measurementName = serializers.CharField(source="measurement.name", read_only=True)
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
     filterInfo = serializers.SerializerMethodField()
 
     class Meta:
         model = GeneratedFilter
-        fields = ["filterId", "studyId", "measurementId", "status", "filterInfo", "createdAt"]
+        fields = [
+            "filterId",
+            "studyId",
+            "studyName",
+            "measurementId",
+            "measurementName",
+            "status",
+            "filterInfo",
+            "createdAt",
+        ]
 
     def get_filterInfo(self, obj):
         return {
