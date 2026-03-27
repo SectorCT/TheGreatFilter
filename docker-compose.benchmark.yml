@@ -1,0 +1,102 @@
+services:
+  core:
+    build: ./core
+    expose:
+      - "8000"
+    ports:
+      - "8003:8000"
+    environment:
+      - DB_PATH=/data/h2osim.db
+      - CORE_WORKERS=2
+      - USE_VQE=0
+      - VQE_ACTIVE_ELECTRONS=4
+      - VQE_ACTIVE_ORBITALS=4
+      - VQE_MAX_ITERATIONS=80
+    volumes:
+      - bench-core-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks: [qbit_internal]
+
+  db:
+    image: postgres:16-alpine
+    ports:
+      - "5435:5432"
+    volumes:
+      - bench-pgdata:/var/lib/postgresql/data/
+    env_file:
+      - ./server/.env
+    environment:
+      POSTGRES_DB: thegreatfilter
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d thegreatfilter"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [qbit_internal]
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [qbit_internal]
+
+  web:
+    build: ./server
+    volumes:
+      - ./server/backend_bench:/home/app/backend/
+    ports:
+      - "8002:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      core:
+        condition: service_healthy
+    env_file:
+      - ./server/.env
+    environment:
+      DB_HOST: db
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      CORE_SERVICE_URL: http://core:8000
+    networks: [qbit_internal]
+
+  worker:
+    build: ./server
+    volumes:
+      - ./server/backend_bench:/home/app/backend/
+    command: celery -A backend worker --loglevel=info -Q simulation,default
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      core:
+        condition: service_healthy
+    env_file:
+      - ./server/.env
+    environment:
+      DB_HOST: db
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      CORE_SERVICE_URL: http://core:8000
+    networks: [qbit_internal]
+
+volumes:
+  bench-core-data:
+  bench-pgdata:
+
+networks:
+  qbit_internal:
+    driver: bridge

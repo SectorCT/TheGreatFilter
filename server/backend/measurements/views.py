@@ -19,6 +19,20 @@ from .serializers import (
 from .services.importers import parse_uploaded_measurement_csv
 
 
+def build_station_location_payload(station_row):
+    return {
+        "station_id": station_row["external_station_id"],
+        "country": station_row["country"] or None,
+        "water_type": station_row["water_type"] or None,
+        "station_identifier": station_row["name"] or None,
+        "water_body_name": station_row["water_body_name"] or None,
+        "main_basin": station_row["main_basin"] or None,
+        "latitude": station_row["latitude"],
+        "longitude": station_row["longitude"],
+        "local_station_number": station_row["local_station_number"] or None,
+    }
+
+
 class WaterMeasurementListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
 
@@ -116,9 +130,9 @@ class WaterMeasurementMapView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        queryset = (
+        station_rows = list(
             Station.objects.filter(source_dataset="gemstat")
-            .only(
+            .values(
                 "external_station_id",
                 "name",
                 "source_dataset",
@@ -137,8 +151,23 @@ class WaterMeasurementMapView(APIView):
             .order_by("name", "external_station_id")
         )
 
-        serializer = StationMapSerializer(queryset, many=True)
-        return Response({"results": serializer.data, "count": len(serializer.data)})
+        results = [
+            {
+                "stationId": station_row["external_station_id"],
+                "locationId": station_row["external_station_id"],
+                "name": station_row["name"],
+                "source": station_row["source_dataset"],
+                "latitude": station_row["latitude"],
+                "longitude": station_row["longitude"],
+                "measurementCount": station_row["measurement_count"],
+                "latestMeasurementId": station_row["latest_measurement_id"],
+                "latestSampleDate": station_row["latest_sample_date"],
+                "latestSampleTime": station_row["latest_sample_time"],
+                "sampleLocation": build_station_location_payload(station_row),
+            }
+            for station_row in station_rows
+        ]
+        return Response({"results": results, "count": len(results)})
 
 
 class WaterMeasurementLocationDetailView(APIView):
