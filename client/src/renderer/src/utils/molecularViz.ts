@@ -247,7 +247,7 @@ export class MolecularScene {
         : 90
 
       const filteredCount = molecule.filterable
-        ? Math.max(2, Math.round(baseCount * (1 - this.removalEfficiency)))
+        ? Math.max(0, Math.round(baseCount * (1 - this.removalEfficiency)))
         : Math.round(baseCount * 0.98)
 
       const baseRadius = clamp(3.5 + molecule.radiusScale * 2.6 * poreFactor, 3, 9)
