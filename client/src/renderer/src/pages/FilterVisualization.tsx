@@ -297,6 +297,8 @@ export function FilterVisualization(): React.JSX.Element {
     setSelectedAtom(null)
     if (viewerRef.current) {
       viewerRef.current.setStyle({}, BASE_STYLE)
+      ;(viewerRef.current as unknown as { setColorByElement?: (sel: object, colors: Record<string, string>) => void })
+        .setColorByElement?.({}, { C: '#111111' })
     }
     viewerRef.current?.removeAllLabels()
     viewerRef.current?.render()
@@ -307,7 +309,7 @@ export function FilterVisualization(): React.JSX.Element {
     if (!containerRef.current) return
 
     const viewer = $3Dmol.createViewer(containerRef.current, {
-      backgroundColor: '#0b0f17'
+      backgroundColor: "#F9F8F6"
     })
     viewerRef.current = viewer
     if (modelAtoms) {
@@ -317,6 +319,8 @@ export function FilterVisualization(): React.JSX.Element {
       viewer.addModel(xyz, 'xyz')
     }
     viewer.setStyle({}, BASE_STYLE)
+    ;(viewer as unknown as { setColorByElement?: (sel: object, colors: Record<string, string>) => void })
+      .setColorByElement?.({}, { C: '#111111' })
     viewer.setClickable({}, true, (atom: ClickableAtom) => {
       lastAtomClickRef.current = Date.now()
       const atomIndex = typeof atom?.serial === 'number' ? atom.serial : (atom?.index ?? '?')
@@ -332,6 +336,8 @@ export function FilterVisualization(): React.JSX.Element {
       })
       viewer.removeAllLabels()
       viewer.setStyle({}, BASE_STYLE)
+      ;(viewer as unknown as { setColorByElement?: (sel: object, colors: Record<string, string>) => void })
+        .setColorByElement?.({}, { C: '#111111' })
       if (typeof atom?.serial === 'number') {
         viewer.setStyle(
           { serial: atom.serial },
@@ -444,7 +450,7 @@ export function FilterVisualization(): React.JSX.Element {
       {!loading ? (
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden xl:grid-cols-[minmax(0,1fr)_320px]">
         <section className="flex min-h-0 flex-col gap-4 overflow-hidden">
-          <div className="relative min-h-0 flex-1 overflow-hidden rounded-[8px] border border-border bg-black">
+          <div className="relative min-h-0 flex-1 overflow-hidden rounded-[8px] bg-black">
             <div ref={containerRef} className="absolute inset-0" onClick={handleViewerClick} />
           </div>
           <div className="h-36 shrink-0 overflow-y-auto rounded-[8px] border border-border bg-card p-4">
@@ -498,7 +504,7 @@ export function FilterVisualization(): React.JSX.Element {
           <h2 className="mb-3 text-sm font-semibold">Legend</h2>
           <div className="space-y-2 text-sm">
             <p className="text-muted-foreground">
-              <span className="font-medium text-foreground">C</span> Carbon (gray)
+              <span className="font-medium text-foreground">C</span> Carbon (black)
             </p>
             <p className="text-muted-foreground">
               <span className="font-medium text-foreground">O</span> Oxygen (red)
