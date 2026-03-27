@@ -9,6 +9,7 @@ from django.db import connection
 from django.conf import settings
 from django.http import FileResponse, HttpResponse
 import os
+from pathlib import Path
 
 
 @api_view(['GET'])
@@ -58,3 +59,19 @@ def frontend_view(request, path=''):
         return FileResponse(open(index_file_path, 'rb'), content_type='text/html')
     else:
         return HttpResponse("Frontend not found. Please build the client application. Looking for: " + index_file_path, status=404)
+
+
+def linux_appimage_download_view(request):
+    """
+    Serve the latest Linux AppImage build.
+    """
+    default_download_path = Path('/var/www/downloads/client-latest.AppImage')
+    configured_download_path = getattr(settings, 'LINUX_APPIMAGE_PATH', None)
+    appimage_path = Path(configured_download_path) if configured_download_path else default_download_path
+
+    if not appimage_path.exists() or not appimage_path.is_file():
+        return HttpResponse(f'Linux AppImage not found at: {appimage_path}', status=404)
+
+    response = FileResponse(open(appimage_path, 'rb'), as_attachment=True, filename='client-latest.AppImage')
+    response['Content-Type'] = 'application/octet-stream'
+    return response

@@ -160,3 +160,6 @@ CORS_ALLOW_ALL_ORIGINS = True
 
 # Core simulation service
 CORE_SERVICE_URL = os.getenv("CORE_SERVICE_URL", "http://core:8000")
+
+# Public Linux desktop artifact (AppImage) path served by backend download route.
+LINUX_APPIMAGE_PATH = os.getenv("LINUX_APPIMAGE_PATH", "/var/www/downloads/client-latest.AppImage")
