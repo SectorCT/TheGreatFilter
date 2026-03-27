@@ -30,6 +30,8 @@ const resolveStudies = (payload: StudyListResponse): Study[] => {
   return payload.results ?? []
 }
 
+const NEW_STUDY_OPTION = '__new_study__'
+
 const formatFixed = (value: unknown): string => {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
   return value.toFixed(2)
@@ -126,7 +128,11 @@ export function NewFilter(): React.JSX.Element {
     [measurements, selectedMeasurementId]
   )
 
-  const canSubmit = !!selectedStudyId && !!selectedMeasurementId && selectedTargetCodes.length > 0
+  const canSubmit =
+    !!selectedStudyId &&
+    selectedStudyId !== NEW_STUDY_OPTION &&
+    !!selectedMeasurementId &&
+    selectedTargetCodes.length > 0
   const availableParameterOptions = useMemo(
     () =>
       measurementParameters
@@ -353,31 +359,34 @@ export function NewFilter(): React.JSX.Element {
                     {study.name}
                   </option>
                 ))}
+                <option value={NEW_STUDY_OPTION}>NEW STUDY</option>
               </select>
-              <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-                <input
-                  type="text"
-                  value={inlineStudyName}
-                  onChange={(event) => setInlineStudyName(event.target.value)}
-                  placeholder="New study name"
-                  className="h-9 w-full rounded-[6px] border border-input bg-surface-elevated px-3 text-sm"
-                />
-                <input
-                  type="text"
-                  value={inlineStudyDescription}
-                  onChange={(event) => setInlineStudyDescription(event.target.value)}
-                  placeholder="Description (optional)"
-                  className="h-9 w-full rounded-[6px] border border-input bg-surface-elevated px-3 text-sm"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => void handleCreateStudyInline()}
-                  disabled={isCreatingStudyInline}
-                >
-                  {isCreatingStudyInline ? 'Creating...' : 'Create Study'}
-                </Button>
-              </div>
+              {selectedStudyId === NEW_STUDY_OPTION ? (
+                <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                  <input
+                    type="text"
+                    value={inlineStudyName}
+                    onChange={(event) => setInlineStudyName(event.target.value)}
+                    placeholder="New study name"
+                    className="h-9 w-full rounded-[6px] border border-input bg-surface-elevated px-3 text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={inlineStudyDescription}
+                    onChange={(event) => setInlineStudyDescription(event.target.value)}
+                    placeholder="Description (optional)"
+                    className="h-9 w-full rounded-[6px] border border-input bg-surface-elevated px-3 text-sm"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleCreateStudyInline()}
+                    disabled={isCreatingStudyInline}
+                  >
+                    {isCreatingStudyInline ? 'Creating...' : 'Create Study'}
+                  </Button>
+                </div>
+              ) : null}
             </div>
             <div>
               <label className="scientific-label mb-1 block">Water Measurement</label>

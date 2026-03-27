@@ -58,7 +58,6 @@ function App(): React.JSX.Element {
             <Route path="/filters/new" element={<NewFilter />} />
             <Route path="/filters/:id" element={<FilterDetails />} />
             <Route path="/filters/:id/analysis" element={<FilterAnalysis />} />
-            <Route path="/filters/visualize" element={<FilterVisualization />} />
             <Route path="/filters/:id/visualize" element={<FilterVisualization />} />
             <Route path="/filters/:id/simulate" element={<FilterSimulation />} />
             <Route path="/measurements" element={<Measurements />} />

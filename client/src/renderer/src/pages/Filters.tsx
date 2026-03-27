@@ -1,4 +1,4 @@
-import { ArrowRight, FlaskConical, Upload } from 'lucide-react'
+import { ArrowRight, FlaskConical } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
@@ -161,10 +161,6 @@ export function Filters(): React.JSX.Element {
           <Button onClick={() => navigate('/filters/new')} className="shrink-0">
             <FlaskConical size={16} strokeWidth={1.5} />
             New Filter
-          </Button>
-          <Button variant="outline" onClick={() => navigate('/filters/visualize')} className="shrink-0">
-            <Upload size={16} strokeWidth={1.5} />
-            Visualize JSON
           </Button>
         </div>
       </div>
