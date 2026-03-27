@@ -41,8 +41,8 @@ function App(): React.JSX.Element {
       }
     }
 
-    const timeoutId = window.setTimeout(preloadMapModule, 1200)
-    return () => window.clearTimeout(timeoutId)
+    const timeoutId = globalThis.setTimeout(preloadMapModule, 1200)
+    return () => globalThis.clearTimeout(timeoutId)
   }, [])
 
   return (
