@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ChevronLeft } from 'lucide-react'
-import OpenStreetMapPointsCard from '@renderer/components/OpenStreetMapPointsCard'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { ChevronLeft, Loader2 } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import {
   createMeasurement,
@@ -12,6 +11,7 @@ import {
 } from '@renderer/utils/api'
 
 type Step = 'map' | 'timestamps'
+const OpenStreetMapPointsCard = lazy(() => import('@renderer/components/OpenStreetMapPointsCard'))
 
 type DateRow = {
   rowKey: string
@@ -184,6 +184,8 @@ export function GemstatMapPanel(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingStation, setIsLoadingStation] = useState(false)
+  const [isPreparingMap, setIsPreparingMap] = useState(false)
+  const [canRenderMap, setCanRenderMap] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -193,7 +195,6 @@ export function GemstatMapPanel(): React.JSX.Element {
       try {
         const result = await getGemstatLocations()
         if (cancelled) return
-        console.info('[Map] Loaded locations:', result.locations.length)
         setLocations(result.locations)
       } catch (e) {
         console.error(e)
@@ -211,6 +212,32 @@ export function GemstatMapPanel(): React.JSX.Element {
     }
   }, [])
 
+  useEffect(() => {
+    if (step !== 'map') return
+    if (isLoading || !locations || locations.length === 0) {
+      setCanRenderMap(false)
+      setIsPreparingMap(false)
+      return
+    }
+
+    setIsPreparingMap(true)
+    setCanRenderMap(false)
+
+    let raf2 = 0
+    const raf1 = window.requestAnimationFrame(() => {
+      raf2 = window.requestAnimationFrame(() => {
+        setCanRenderMap(true)
+        // Keep the loading UI visible for one more paint cycle.
+        window.setTimeout(() => setIsPreparingMap(false), 120)
+      })
+    })
+
+    return () => {
+      window.cancelAnimationFrame(raf1)
+      if (raf2) window.cancelAnimationFrame(raf2)
+    }
+  }, [step, isLoading, locations])
+
   const sampleRows = useMemo(
     () => toDateRows(stationRows, stationMeasurements),
     [stationRows, stationMeasurements],
@@ -220,12 +247,13 @@ export function GemstatMapPanel(): React.JSX.Element {
     if (!selectedStation) return
     setIsLoadingStation(true)
     setError(null)
+    // Switch immediately so users get instant feedback while station data loads.
+    setStep('timestamps')
     try {
       const stationData = await getGemstatStationMeasurements(selectedStation.locationId)
       setStationRows(stationData.rows ?? [])
       setStationMeasurements(stationData.measurements)
       setActionMessage(null)
-      setStep('timestamps')
     } catch (e) {
       console.error(e)
       setError('Failed to load station parameter history')
@@ -315,11 +343,35 @@ export function GemstatMapPanel(): React.JSX.Element {
           <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
             <div className="relative min-h-0 h-full overflow-hidden rounded-[6px] border border-border bg-muted">
               {!isLoading && locations && locations.length > 0 ? (
-                <OpenStreetMapPointsCard
-                  points={locations}
-                  selectedLocationId={selectedStation?.locationId ?? null}
-                  onSelectPoint={(point) => setSelectedStation(point)}
-                />
+                <>
+                  {canRenderMap ? (
+                    <Suspense
+                      fallback={
+                        <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Preparing interactive map...
+                        </div>
+                      }
+                    >
+                      <OpenStreetMapPointsCard
+                        points={locations}
+                        selectedLocationId={selectedStation?.locationId ?? null}
+                        onSelectPoint={(point) => setSelectedStation(point)}
+                      />
+                    </Suspense>
+                  ) : null}
+                  {isPreparingMap ? (
+                    <div className="absolute inset-0 z-10 flex flex-col justify-center gap-2 bg-background/65 px-4 backdrop-blur-[1px]">
+                      <p className="text-xs text-muted-foreground">Preparing interactive map...</p>
+                      <div className="h-1.5 w-full overflow-hidden rounded bg-secondary">
+                        <div
+                          className="h-full w-1/3 bg-primary"
+                          style={{ animation: 'tgif-progress-indeterminate 1.1s ease-in-out infinite' }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                </>
               ) : !isLoading && locations && locations.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
                   No map points returned by backend for this account.
@@ -377,13 +429,19 @@ export function GemstatMapPanel(): React.JSX.Element {
                 {selectedStation ? formatStationTitle(selectedStation) : 'Station'}
               </h3>
               <p className="text-sm text-muted-foreground">
-                All timestamps for this station.
+                {isLoadingStation ? 'Loading station timestamps...' : 'All timestamps for this station.'}
               </p>
             </div>
-            <Button variant="outline" onClick={() => setStep('map')}>
+            <Button variant="outline" onClick={() => setStep('map')} disabled={isLoadingStation}>
               <ChevronLeft className="mr-1 h-4 w-4" /> Back to map
             </Button>
           </div>
+          {isLoadingStation ? (
+            <div className="flex items-center gap-2 rounded-[6px] border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading measurements for {selectedStation ? formatStationTitle(selectedStation) : 'station'}...
+            </div>
+          ) : null}
           <div className="overflow-x-auto rounded-[6px] border border-border">
             <table className="w-full min-w-[680px] text-sm">
               <thead className="bg-muted/40 text-left">

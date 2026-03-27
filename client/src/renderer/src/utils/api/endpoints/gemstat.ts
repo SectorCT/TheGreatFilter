@@ -14,7 +14,8 @@ import GemstatLocationsWorker from '@renderer/workers/gemstatLocations.worker?wo
 
 let locationsInFlight: Promise<GemstatLocationFetchResponse> | null = null
 let locationsCache: { value: GemstatLocationFetchResponse; expiresAt: number } | null = null
-const LOCATIONS_CACHE_TTL_MS = 60_000
+const LOCATIONS_CACHE_TTL_MS = 24 * 60 * 60 * 1000
+const LOCATIONS_CACHE_KEY = 'tgif.gemstat.locations.cache.v1'
 
 let locationsWorker: Worker | null = null
 let workerRequestId = 0
@@ -45,6 +46,55 @@ const getLocationsWorker = (): Worker | null => {
     }
   }
   return locationsWorker
+}
+
+const readLocationsCacheFromStorage = (): { value: GemstatLocationFetchResponse; expiresAt: number } | null => {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(LOCATIONS_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as {
+      locations?: GemstatLocation[]
+      expiresAt?: number
+    }
+    if (!Array.isArray(parsed.locations) || typeof parsed.expiresAt !== 'number') return null
+    if (parsed.expiresAt <= Date.now()) {
+      window.localStorage.removeItem(LOCATIONS_CACHE_KEY)
+      return null
+    }
+    return {
+      value: { locations: parsed.locations },
+      expiresAt: parsed.expiresAt
+    }
+  } catch {
+    return null
+  }
+}
+
+const writeLocationsCacheToStorage = (cache: {
+  value: GemstatLocationFetchResponse
+  expiresAt: number
+}): void => {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(
+      LOCATIONS_CACHE_KEY,
+      JSON.stringify({
+        locations: cache.value.locations,
+        expiresAt: cache.expiresAt
+      })
+    )
+  } catch {
+    // Best-effort cache write only.
+  }
+}
+
+export const hasGemstatLocationsCache = (): boolean => {
+  if (locationsCache && locationsCache.expiresAt > Date.now()) return true
+  const fromStorage = readLocationsCacheFromStorage()
+  if (!fromStorage) return false
+  locationsCache = fromStorage
+  return true
 }
 
 const normalizeLocationsSync = (results: MeasurementMapResponse['results'] = []): GemstatLocation[] => {
@@ -129,6 +179,9 @@ const normalizeLocations = async (results: MeasurementMapResponse['results'] = [
 }
 
 export const getGemstatLocations = async (): Promise<GemstatLocationFetchResponse> => {
+  if (!locationsCache) {
+    locationsCache = readLocationsCacheFromStorage()
+  }
   if (locationsCache && locationsCache.expiresAt > Date.now()) {
     return locationsCache.value
   }
@@ -164,10 +217,12 @@ export const getGemstatLocations = async (): Promise<GemstatLocationFetchRespons
 
   try {
     const result = await locationsInFlight
-    locationsCache = {
+    const cacheEntry = {
       value: result,
-      expiresAt: Date.now() + LOCATIONS_CACHE_TTL_MS,
+      expiresAt: Date.now() + LOCATIONS_CACHE_TTL_MS
     }
+    locationsCache = cacheEntry
+    writeLocationsCacheToStorage(cacheEntry)
     return result
   } finally {
     const endMs = performance.now()
