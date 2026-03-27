@@ -238,7 +238,9 @@ export type FilterStatus = 'Pending' | 'Generating' | 'Success' | 'Failed'
 export type FilterListItem = {
   filterId: string
   studyId: string
+  studyName?: string
   measurementId: string
+  measurementName?: string
   useQuantumComputer?: boolean | null
   status: FilterStatus
   createdAt: string // ISO-8601

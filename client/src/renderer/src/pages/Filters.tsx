@@ -1,4 +1,4 @@
-import { ArrowRight, FlaskConical, Upload } from 'lucide-react'
+import { ArrowRight, Cpu, FlaskConical, Upload } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useNavigate } from 'react-router-dom'
@@ -206,14 +206,11 @@ export function Filters(): React.JSX.Element {
 
       <div className="rounded-[6px] border border-border bg-card">
         <div className="overflow-x-auto">
-          <table className="min-w-[860px] w-full text-sm">
+          <table className="min-w-[720px] w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-table-header text-left">
-                <th className="px-4 py-2.5 font-medium text-muted-foreground">ID</th>
-                <th className="px-4 py-2.5 font-medium text-muted-foreground">Filter Name</th>
                 <th className="px-4 py-2.5 font-medium text-muted-foreground">Study</th>
-                <th className="px-4 py-2.5 font-medium text-muted-foreground">Source</th>
-                <th className="px-4 py-2.5 font-medium text-muted-foreground">Parameters</th>
+                <th className="px-4 py-2.5 font-medium text-muted-foreground">Measurement</th>
                 <th className="px-4 py-2.5 font-medium text-muted-foreground">Date</th>
                 <th className="px-4 py-2.5 font-medium text-muted-foreground">Status</th>
                 <th className="px-4 py-2.5 font-medium text-muted-foreground" />
@@ -222,21 +219,21 @@ export function Filters(): React.JSX.Element {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-muted-foreground">
                     Loading filters...
                   </td>
                 </tr>
               ) : null}
               {!isLoading && error ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-destructive">
+                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-destructive">
                     {error}
                   </td>
                 </tr>
               ) : null}
               {!isLoading && !error && filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-muted-foreground">
                     {studyFilterId ? 'No filters for the selected study.' : 'No filters generated yet.'}
                   </td>
                 </tr>
@@ -249,13 +246,17 @@ export function Filters(): React.JSX.Element {
                     item.status === 'Generating' ? 'shimmer-row' : ''
                   }`}
                 >
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{item.filterId}</td>
-                  <td className="px-4 py-3 font-medium">Filter {item.filterId.slice(0, 8)}</td>
-                  <td className="px-4 py-3 font-mono text-xs">
-                    {studyNameById.get(item.studyId) ?? item.studyId.slice(0, 8)}
+                  <td className="px-4 py-3 font-medium">
+                    {item.studyName?.trim() || studyNameById.get(item.studyId) || '—'}
                   </td>
-                  <td className="px-4 py-3">-</td>
-                  <td className="px-4 py-3 font-mono text-xs">-</td>
+                  <td className="px-4 py-3 font-medium">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span>{item.measurementName?.trim() || '—'}</span>
+                      {item.useQuantumComputer === true ? (
+                        <Cpu size={14} strokeWidth={1.7} className="text-violet-600" aria-label="Quantum computer" />
+                      ) : null}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
                     {new Date(item.createdAt).toISOString().slice(0, 10)}
                   </td>
