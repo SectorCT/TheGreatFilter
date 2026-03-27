@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, startTransition, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, Loader2 } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -175,6 +175,7 @@ export function GemstatMapPanel(): React.JSX.Element {
   const [step, setStep] = useState<Step>('map')
   const [locations, setLocations] = useState<GemstatLocation[] | null>(null)
   const [selectedStation, setSelectedStation] = useState<GemstatLocation | null>(null)
+  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null)
   const [stationRows, setStationRows] = useState<GemstatLocationRow[]>([])
   const [stationMeasurements, setStationMeasurements] = useState<GemstatStationMeasurementRow[]>([])
   const [activeRowKey, setActiveRowKey] = useState<string | null>(null)
@@ -280,9 +281,12 @@ export function GemstatMapPanel(): React.JSX.Element {
     }
   }
 
-  const onSelectStation = async (station: GemstatLocation): Promise<void> => {
+  const onSelectStation = (station: GemstatLocation): void => {
+    // Sidebar selection should update immediately.
     setSelectedStation(station)
-    await loadStationData(station)
+    // Map marker highlight can be deferred to avoid blocking the loading paint.
+    startTransition(() => setSelectedLocationId(station.locationId))
+    void loadStationData(station)
   }
 
   const onContinueFromMap = async (): Promise<void> => {
@@ -375,7 +379,7 @@ export function GemstatMapPanel(): React.JSX.Element {
                     >
                       <OpenStreetMapPointsCard
                         points={locations}
-                        selectedLocationId={selectedStation?.locationId ?? null}
+                        selectedLocationId={selectedLocationId}
                         onSelectPoint={(point) => {
                           void onSelectStation(point)
                         }}
