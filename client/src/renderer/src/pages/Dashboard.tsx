@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
 import { StatusBadge } from '@renderer/components/StatusBadge'
 import { Button } from '@renderer/components/ui/button'
+import { usePollPendingFilterStatuses } from '@renderer/hooks/usePollPendingFilterStatuses'
 import { getFilters, getMeasurements } from '@renderer/utils/api/endpoints'
 import {
   type FilterListItem,
@@ -90,6 +91,8 @@ export function Dashboard(): React.JSX.Element {
       isMounted = false
     }
   }, [])
+
+  usePollPendingFilterStatuses(filters, setFilters)
 
   const measurementCount = useMemo(() => measurements.length, [measurements])
   const filterCount = useMemo(() => filters.length, [filters])

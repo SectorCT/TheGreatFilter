@@ -5,7 +5,8 @@ import { useNavigate } from 'react-router-dom'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
 import { StatusBadge } from '@renderer/components/StatusBadge'
 import { Button } from '@renderer/components/ui/button'
-import { getFilterStatus, getFilters, getStudies } from '@renderer/utils/api/endpoints'
+import { usePollPendingFilterStatuses } from '@renderer/hooks/usePollPendingFilterStatuses'
+import { getFilters, getStudies } from '@renderer/utils/api/endpoints'
 import { type FilterListItem, type FilterListResponse, type Study, type StudyListResponse } from '@renderer/utils/api/types'
 
 const resolveFilters = (payload: FilterListResponse): FilterListItem[] => {
@@ -24,7 +25,6 @@ export function Filters(): React.JSX.Element {
   const [items, setItems] = useState<FilterListItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const itemsRef = useRef(items)
 
   const [studies, setStudies] = useState<Study[]>([])
   const [isLoadingStudies, setIsLoadingStudies] = useState(true)
@@ -53,56 +53,7 @@ export function Filters(): React.JSX.Element {
     }
   }, [])
 
-  // Keep statuses fresh while this page is open.
-  useEffect(() => {
-    itemsRef.current = items
-  }, [items])
-
-  useEffect(() => {
-    let cancelled = false
-    let inFlight = false
-    const POLL_MS = 5000
-
-    const poll = async (): Promise<void> => {
-      if (cancelled) return
-      if (inFlight) return
-
-      const current = itemsRef.current
-      const candidateIds = current
-        .filter((it) => it.status === 'Pending' || it.status === 'Generating')
-        .map((it) => it.filterId)
-
-      if (candidateIds.length === 0) return
-
-      inFlight = true
-      try {
-        const results = await Promise.all(candidateIds.map((filterId) => getFilterStatus(filterId)))
-        const nextById = new Map(results.map((r) => [r.filterId, r.status] as const))
-        setItems((prev) =>
-          prev.map((item) => {
-            const nextStatus = nextById.get(item.filterId)
-            return nextStatus ? { ...item, status: nextStatus } : item
-          })
-        )
-      } catch {
-        // Silent: polling failures shouldn't break the entire filters page.
-      } finally {
-        inFlight = false
-      }
-    }
-
-    const interval = window.setInterval(() => {
-      void poll()
-    }, POLL_MS)
-
-    // Do one immediate poll so the UI updates quickly after landing.
-    void poll()
-
-    return () => {
-      cancelled = true
-      window.clearInterval(interval)
-    }
-  }, [])
+  usePollPendingFilterStatuses(items, setItems)
 
   useEffect(() => {
     let isMounted = true

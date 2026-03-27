@@ -22,6 +22,7 @@ import {
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
 import { StatusBadge } from '@renderer/components/StatusBadge'
 import { Button } from '@renderer/components/ui/button'
+import { isFilterStatusWaiting } from '@renderer/hooks/usePollPendingFilterStatuses'
 import { exportFilterCsv, getFilterDetails, getFilterStatus } from '@renderer/utils/api/endpoints'
 import { type FilterDetailsSuccessResponse, type FilterStatus } from '@renderer/utils/api/types'
 import { buildFilterInfoViewModel } from '@renderer/utils/filterInfoViewModel'
@@ -46,6 +47,7 @@ export function FilterDetails(): React.JSX.Element {
 
   useEffect(() => {
     let isMounted = true
+    setStatus(null)
     const loadStatus = async (): Promise<void> => {
       if (!id) return
       setIsLoading(true)
@@ -66,6 +68,33 @@ export function FilterDetails(): React.JSX.Element {
       isMounted = false
     }
   }, [id])
+
+  const statusPollingActive = id != null && isFilterStatusWaiting(status)
+
+  useEffect(() => {
+    if (!id || !statusPollingActive) return
+
+    let cancelled = false
+    const poll = async (): Promise<void> => {
+      try {
+        const response = await getFilterStatus(id)
+        if (cancelled) return
+        setStatus(response.status)
+      } catch {
+        // Transient poll errors: keep showing the last known status.
+      }
+    }
+
+    const interval = window.setInterval(() => {
+      void poll()
+    }, 5000)
+    void poll()
+
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [id, statusPollingActive])
 
   useEffect(() => {
     let isMounted = true
