@@ -84,11 +84,16 @@ const shouldForceLogoutFromUnauthorized = (status: number, bodyText?: string): b
   )
 }
 
+const loginHashPath = (): string => {
+  const raw = window.location.hash.replace(/^#/, '').split('?')[0] || '/'
+  return raw.startsWith('/') ? raw : `/${raw}`
+}
+
 const forceLogoutAndRedirectToLogin = (): void => {
   clearAccessToken()
   if (typeof window === 'undefined') return
-  if (window.location.pathname === '/') return
-  window.location.assign('/')
+  if (loginHashPath() === '/') return
+  window.location.hash = '/'
 }
 
 export const makeAuthenticatedReq = async <Req, Res>(

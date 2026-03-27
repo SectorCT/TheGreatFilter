@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { HashRouter, Route, Routes } from 'react-router-dom'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { Toaster } from '@renderer/components/ui/toaster'
 import { Toaster as Sonner } from '@renderer/components/ui/sonner'
@@ -49,7 +49,7 @@ function App(): React.JSX.Element {
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      <HashRouter>
         <Routes>
           <Route path="/" element={<Auth />} />
           <Route element={<AppLayout />}>
@@ -68,7 +68,7 @@ function App(): React.JSX.Element {
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
-      </BrowserRouter>
+      </HashRouter>
     </TooltipProvider>
   )
 }
