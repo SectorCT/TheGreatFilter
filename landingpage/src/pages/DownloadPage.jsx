@@ -1,5 +1,5 @@
 import SiteShell from '../components/SiteShell'
-import { APP_NAME, LINUX_DOWNLOAD_URL } from '../lib/constants'
+import { APP_NAME, LINUX_DOWNLOAD_URL, WINDOWS_DOWNLOAD_URL } from '../lib/constants'
 
 function DownloadIcon(props) {
   return (
@@ -20,7 +20,7 @@ function DownloadIcon(props) {
   )
 }
 
-function PlatformCard({ title, subtitle, href, enabled = false }) {
+function PlatformCard({ title, subtitle, href, enabled = false, footnote }) {
   return (
     <div className="rounded-[12px] border border-border bg-card p-6">
       <div className="text-sm font-semibold tracking-tight">{title}</div>
@@ -45,7 +45,7 @@ function PlatformCard({ title, subtitle, href, enabled = false }) {
         </button>
       )}
       <div className="mt-3 text-[11px] text-muted-foreground">
-        {enabled ? 'Linux direct download (AppImage).' : 'No public download link yet.'}
+        {enabled ? footnote : 'No public download link yet.'}
       </div>
     </div>
   )
@@ -63,21 +63,30 @@ export default function DownloadPage() {
         </p>
 
         <div className="mt-8 grid gap-4 md:grid-cols-3">
-          <PlatformCard title="Windows" subtitle="Installer (.exe)" />
+          <PlatformCard
+            title="Windows"
+            subtitle="Installer (.exe)"
+            href={WINDOWS_DOWNLOAD_URL}
+            enabled={true}
+            footnote="Windows installer (NSIS). Upload qlean-setup.exe to this path."
+          />
           <PlatformCard title="macOS" subtitle="App + DMG" />
           <PlatformCard
             title="Linux"
             subtitle="AppImage"
             href={LINUX_DOWNLOAD_URL}
             enabled={true}
+            footnote="Linux direct download (AppImage)."
           />
         </div>
 
         <div className="mt-10 rounded-[12px] border border-border bg-card p-6">
-          <div className="text-sm font-semibold tracking-tight">Current release link</div>
+          <div className="text-sm font-semibold tracking-tight">Stable download URLs</div>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            Linux download URL:
-            <span className="ml-1 font-mono">{LINUX_DOWNLOAD_URL}</span>.
+            Windows: <span className="font-mono">{WINDOWS_DOWNLOAD_URL}</span>
+          </p>
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+            Linux: <span className="font-mono">{LINUX_DOWNLOAD_URL}</span>
           </p>
         </div>
       </div>

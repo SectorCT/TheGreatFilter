@@ -18,7 +18,8 @@ win:
   # Local builds: avoids winCodeSign 7z (symlink privilege). Re-enable for signed releases.
   signAndEditExecutable: false
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
+  # Stable filename for hosting.
+  artifactName: qlean-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
