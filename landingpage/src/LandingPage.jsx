@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 
 import SiteShell from './components/SiteShell'
-import { APP_NAME, LINUX_DOWNLOAD_URL, TAGLINE } from './lib/constants'
+import { APP_NAME, LINUX_DOWNLOAD_URL, TAGLINE, WINDOWS_DOWNLOAD_URL } from './lib/constants'
 
 function DownloadIcon(props) {
   return (
@@ -53,12 +53,21 @@ export default function LandingPage() {
               remove, generate a filter, then inspect analysis, simulation, and exportable results.
             </p>
 
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:flex-wrap">
+              <a
+                href={WINDOWS_DOWNLOAD_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-3 rounded-[6px] bg-primary px-10 py-5 text-lg font-medium text-primary-foreground transition-all duration-150 hover:bg-primary/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <DownloadIcon className="h-5 w-5" />
+                Download for Windows
+              </a>
               <a
                 href={LINUX_DOWNLOAD_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-3 rounded-[6px] bg-primary px-10 py-5 text-lg font-medium text-primary-foreground transition-all duration-150 hover:bg-primary/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="inline-flex items-center justify-center gap-3 rounded-[6px] border border-input bg-background px-10 py-5 text-lg font-medium text-foreground transition-all duration-150 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <DownloadIcon className="h-5 w-5" />
                 Download for Linux
@@ -68,7 +77,7 @@ export default function LandingPage() {
                 to="/download"
                 className="inline-flex items-center justify-center gap-2 rounded-[6px] border border-input bg-background px-10 py-5 text-lg font-medium text-foreground transition-all duration-150 hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
-                Choose your platform
+                All platforms
               </Link>
             </div>
 
@@ -129,14 +138,24 @@ export default function LandingPage() {
                     <div className="text-xs text-muted-foreground">Download and start designing your next filter.</div>
                   </div>
                 </div>
-                <a
-                  href={LINUX_DOWNLOAD_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center rounded-[6px] bg-primary px-5 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/85"
-                >
-                  Download Linux
-                </a>
+                <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                  <a
+                    href={WINDOWS_DOWNLOAD_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center rounded-[6px] bg-primary px-5 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/85"
+                  >
+                    Windows
+                  </a>
+                  <a
+                    href={LINUX_DOWNLOAD_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center rounded-[6px] border border-input bg-background px-5 py-3 text-sm font-medium text-foreground hover:bg-secondary"
+                  >
+                    Linux
+                  </a>
+                </div>
               </div>
             </div>
           </section>
