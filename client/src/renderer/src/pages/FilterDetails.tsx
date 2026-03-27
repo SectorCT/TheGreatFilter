@@ -26,6 +26,15 @@ import { exportFilterCsv, getFilterDetails, getFilterStatus } from '@renderer/ut
 import { type FilterDetailsSuccessResponse, type FilterStatus } from '@renderer/utils/api/types'
 import { buildFilterInfoViewModel } from '@renderer/utils/filterInfoViewModel'
 
+const toSafeFileStem = (value: string): string => {
+  const normalized = value
+    .trim()
+    .replaceAll(/[<>:"/\\|?*\u0000-\u001F]/g, '-')
+    .replaceAll(/\s+/g, ' ')
+    .replaceAll(/\.+$/g, '')
+  return normalized || 'filter'
+}
+
 export function FilterDetails(): React.JSX.Element {
   const navigate = useNavigate()
   const { id } = useParams()
@@ -140,19 +149,17 @@ export function FilterDetails(): React.JSX.Element {
     setError(null)
     try {
       const result = await exportFilterCsv(id)
-      if (result.kind === 'downloadUrl') {
-        window.open(result.downloadUrl, '_blank', 'noopener,noreferrer')
-      } else {
-        const blob = new Blob([result.csvText], { type: 'text/csv;charset=utf-8;' })
-        const href = URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.href = href
-        link.setAttribute('download', `filter-${id}.csv`)
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        URL.revokeObjectURL(href)
-      }
+      const blob = new Blob([result.csvText], { type: 'text/csv;charset=utf-8;' })
+      const href = URL.createObjectURL(blob)
+      const preferredName = details?.measurementName?.trim() || details?.studyName?.trim() || 'filter'
+      const fileStem = toSafeFileStem(preferredName)
+      const link = document.createElement('a')
+      link.href = href
+      link.setAttribute('download', `${fileStem}.csv`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(href)
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : 'Failed to export CSV.')
     } finally {

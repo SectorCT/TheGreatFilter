@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { ArrowLeft, Loader2, Upload } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import * as $3Dmol from '3dmol'
 import { Breadcrumbs } from '@renderer/components/Breadcrumbs'
+import { Button } from '@renderer/components/ui/button'
 import { getFilterDetails } from '@renderer/utils/api/endpoints'
 import type { FilterInfo } from '@renderer/utils/api/types'
 import { atomPositionsToXyz, buildFilterInfoViewModel } from '@renderer/utils/filterInfoViewModel'
@@ -32,6 +33,117 @@ type ModelAtom = {
   z: number
   bonds: number[]
   bondOrder: number[]
+}
+
+const toRecord = (value: unknown): Record<string, unknown> | null => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+const toFiniteNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined
+
+const toStringOrUndefined = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim().length > 0 ? value : undefined
+
+const normalizeAtomPositions = (
+  value: unknown,
+): Array<{ id?: string | number; x: number; y: number; z: number; element: string }> | undefined => {
+  if (!Array.isArray(value)) return undefined
+  const atoms: Array<{ id?: string | number; x: number; y: number; z: number; element: string }> = []
+  for (const entry of value) {
+    const item = toRecord(entry)
+    if (!item) continue
+    const x = toFiniteNumber(item.x)
+    const y = toFiniteNumber(item.y)
+    const z = toFiniteNumber(item.z)
+    const element = toStringOrUndefined(item.element)
+    if (x == null || y == null || z == null || !element) continue
+    atoms.push({
+      id: typeof item.id === 'string' || typeof item.id === 'number' ? item.id : undefined,
+      x,
+      y,
+      z,
+      element,
+    })
+  }
+  return atoms
+}
+
+const normalizeConnections = (
+  value: unknown,
+): Array<{ from: string | number; to: string | number; order?: number }> | undefined => {
+  if (!Array.isArray(value)) return undefined
+  const connections: Array<{ from: string | number; to: string | number; order?: number }> = []
+  for (const entry of value) {
+    const item = toRecord(entry)
+    if (!item) continue
+    const from = item.from
+    const to = item.to
+    if ((typeof from !== 'string' && typeof from !== 'number') || (typeof to !== 'string' && typeof to !== 'number')) {
+      continue
+    }
+    const order = toFiniteNumber(item.order)
+    connections.push({ from, to, order })
+  }
+  return connections
+}
+
+const normalizeImportedFilterInfo = (payload: unknown): FilterInfo => {
+  const parsed = toRecord(payload)
+  if (!parsed) throw new Error('JSON root must be an object.')
+
+  const rawFilterInfo = toRecord(parsed.filterInfo) ?? parsed
+  const nestedFilterStructure = toRecord(rawFilterInfo.filterStructure)
+  const nestedResultPayload = toRecord(rawFilterInfo.resultPayload)
+  const nestedExperimentPayload = toRecord(rawFilterInfo.experimentPayload)
+  const nestedSummaryMetrics = toRecord(rawFilterInfo.summaryMetrics)
+
+  const filterStructure = {
+    ...(nestedFilterStructure ?? {}),
+    poreSize: toFiniteNumber(nestedFilterStructure?.poreSize) ?? toFiniteNumber(rawFilterInfo.poreSize),
+    layerThickness:
+      toFiniteNumber(nestedFilterStructure?.layerThickness) ?? toFiniteNumber(rawFilterInfo.layerThickness),
+    latticeSpacing:
+      toFiniteNumber(nestedFilterStructure?.latticeSpacing) ?? toFiniteNumber(rawFilterInfo.latticeSpacing),
+    materialType:
+      toStringOrUndefined(nestedFilterStructure?.materialType) ?? toStringOrUndefined(rawFilterInfo.materialType),
+    atomPositions: normalizeAtomPositions(nestedFilterStructure?.atomPositions ?? rawFilterInfo.atomPositions),
+    connections: normalizeConnections(nestedFilterStructure?.connections ?? rawFilterInfo.connections)
+  }
+
+  const resultPayload = {
+    ...(nestedResultPayload ?? {}),
+    bindingEnergy:
+      toFiniteNumber(nestedResultPayload?.bindingEnergy) ?? toFiniteNumber(rawFilterInfo.bindingEnergy),
+    removalEfficiency:
+      toFiniteNumber(nestedResultPayload?.removalEfficiency) ?? toFiniteNumber(rawFilterInfo.removalEfficiency),
+    pollutant: toStringOrUndefined(nestedResultPayload?.pollutant) ?? toStringOrUndefined(rawFilterInfo.pollutant),
+    pollutantSymbol:
+      toStringOrUndefined(nestedResultPayload?.pollutantSymbol) ??
+      toStringOrUndefined(rawFilterInfo.pollutantSymbol),
+  }
+
+  const normalized: FilterInfo = {
+    filterStructure,
+    resultPayload,
+    experimentPayload: nestedExperimentPayload ?? undefined,
+    summaryMetrics: nestedSummaryMetrics ?? undefined,
+  }
+
+  const hasCoordinates =
+    Array.isArray(filterStructure.atomPositions) && filterStructure.atomPositions.length > 0
+  const hasAnyMetric =
+    typeof filterStructure.materialType === 'string' ||
+    typeof filterStructure.poreSize === 'number' ||
+    typeof resultPayload.bindingEnergy === 'number' ||
+    typeof resultPayload.removalEfficiency === 'number'
+
+  if (!hasCoordinates && !hasAnyMetric) {
+    throw new Error('JSON does not contain recognizable filter visualization fields.')
+  }
+
+  return normalized
 }
 
 const BASE_ELEMENTS = ['C', 'N', 'O', 'S', 'H'] as const
@@ -83,15 +195,18 @@ export function FilterVisualization(): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const viewerRef = useRef<ReturnType<typeof $3Dmol.createViewer> | null>(null)
   const lastAtomClickRef = useRef(0)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [seed] = useState(() => Date.now())
   const [selectedAtom, setSelectedAtom] = useState<SelectedAtomInfo | null>(null)
   const [loading, setLoading] = useState(Boolean(id))
   const [filterInfo, setFilterInfo] = useState<FilterInfo | null>(null)
-  const [error, setError] = useState<string | null>(id ? null : 'Missing filter ID.')
+  const [error, setError] = useState<string | null>(null)
+  const [loadedFromName, setLoadedFromName] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     if (!id) {
+      setLoading(false)
       return
     }
     getFilterDetails(id)
@@ -111,6 +226,21 @@ export function FilterVisualization(): React.JSX.Element {
       cancelled = true
     }
   }, [id])
+
+  const onImportJson = async (file: File): Promise<void> => {
+    setError(null)
+    setSelectedAtom(null)
+    try {
+      const text = await file.text()
+      const parsed = JSON.parse(text) as unknown
+      const importedInfo = normalizeImportedFilterInfo(parsed)
+      setFilterInfo(importedInfo)
+      setLoadedFromName(file.name)
+      setLoading(false)
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : 'Failed to parse filter JSON.')
+    }
+  }
 
   const vm = useMemo(() => buildFilterInfoViewModel(filterInfo), [filterInfo])
   const filterStructure = filterInfo?.filterStructure
@@ -269,15 +399,35 @@ export function FilterVisualization(): React.JSX.Element {
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <button
-            onClick={() => navigate(`/filters/${id}`)}
+            onClick={() => (id ? navigate(`/filters/${id}`) : navigate('/filters'))}
             className="rounded-[6px] p-1.5 transition-colors hover:bg-secondary"
           >
             <ArrowLeft size={16} strokeWidth={1.5} />
           </button>
           <div>
             <h1 className="text-xl font-semibold">Filter Visualization</h1>
-            <p className="font-mono text-xs text-muted-foreground">Filter {id ?? '-'}</p>
+            <p className="font-mono text-xs text-muted-foreground">
+              {loadedFromName ? `Imported JSON: ${loadedFromName}` : `Filter ${id ?? '-'}`}
+            </p>
           </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (!file) return
+              void onImportJson(file)
+              event.target.value = ''
+            }}
+          />
+          <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+            <Upload size={16} strokeWidth={1.5} />
+            Visualize from JSON
+          </Button>
         </div>
       </div>
       {error ? (
