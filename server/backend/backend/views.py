@@ -106,6 +106,11 @@ def windows_setup_download_view(request):
     if not setup_path.exists() or not setup_path.is_file():
         return HttpResponse(f'Windows installer not found at: {setup_path}', status=404)
 
-    response = FileResponse(open(setup_path, 'rb'), as_attachment=True, filename='qlean-setup.exe')
+    file_size = setup_path.stat().st_size
+    file_handle = open(setup_path, 'rb')
+    response = FileResponse(file_handle, as_attachment=True, filename='qlean-setup.exe')
     response['Content-Type'] = 'application/octet-stream'
+    response['Content-Length'] = str(file_size)
+    response['Cache-Control'] = 'no-store, max-age=0'
+    response['X-Content-Type-Options'] = 'nosniff'
     return response

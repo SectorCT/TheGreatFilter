@@ -15,4 +15,5 @@ WORKDIR /home/app/backend
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "python manage.py makemigrations && python manage.py migrate && gunicorn backend.wsgi:application --bind 0.0.0.0:8000"]
+# Long timeout so large AppImage/exe downloads over slow links are not killed mid-transfer.
+CMD ["sh", "-c", "python manage.py makemigrations && python manage.py migrate && gunicorn backend.wsgi:application --bind 0.0.0.0:8000 --timeout 600 --workers 2"]

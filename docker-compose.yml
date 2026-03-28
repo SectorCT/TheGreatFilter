@@ -71,6 +71,8 @@ services:
     build: ./server
     volumes:
       - ./server/backend:/home/app/backend/
+      # Droplet: put AppImage + qlean-setup.exe here. Create dir if missing: sudo mkdir -p /var/www/downloads
+      - /var/www/downloads:/var/www/downloads:ro
     ports:
       - "8000:8000"
     depends_on:
