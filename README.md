@@ -11,7 +11,7 @@ More product and API contract detail lives under [docs/](docs/README.md) (PRD, u
 | Component | Technologies |
 |-----------|-------------|
 | **Core (simulation)** | FastAPI, PySCF (Hartree-Fock), PennyLane + Qiskit (VQE), DEAP (genetic algorithms), SQLite |
-| **Backend** | Django, Django REST Framework, Celery, Redis, PostgreSQL, JWT + Google OAuth |
+| **Backend** | Django, Django REST Framework, Celery, Redis, PostgreSQL, JWT |
 | **Desktop client** | Electron, React 19, TypeScript, Vite, Tailwind CSS, Leaflet (maps), Recharts, 3Dmol.js (molecular viewer), serialport (USB devices) |
 | **Landing page** | Vite + React, Tailwind CSS |
 | **Infrastructure** | Docker Compose, PostgreSQL 16, Redis 7 |
