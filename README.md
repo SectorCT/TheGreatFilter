@@ -1,4 +1,4 @@
-# TheGreatFilter
+# Qlean 
 
 Desktop and web tooling for water-quality measurements, studies, and AI-driven nano-filter design. The system uses **quantum chemistry simulation** (Hartree-Fock and Variational Quantum Eigensolver) combined with **genetic algorithm optimization** to generate filter designs that maximize pollutant-binding energy for measured water conditions.
 
