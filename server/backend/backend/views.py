@@ -11,6 +11,7 @@ from django.http import FileResponse, HttpResponse
 import mimetypes
 import os
 from pathlib import Path
+from typing import Optional
 
 
 @api_view(['GET'])
@@ -70,6 +71,27 @@ def frontend_view(request, path=''):
     )
 
 
+def _resolve_public_download_file(
+    *,
+    env_path_setting: str,
+    filename: str,
+) -> Optional[Path]:
+    """
+    Pick first path that exists: $SETTING, /var/www/downloads/, then static/downloads/ in repo.
+    Works when Docker has not mounted /var/www/downloads yet.
+    """
+    configured = getattr(settings, env_path_setting, None)
+    candidates: list[Path] = []
+    if configured:
+        candidates.append(Path(configured))
+    candidates.append(Path('/var/www/downloads') / filename)
+    candidates.append(Path(settings.BASE_DIR) / 'static' / 'downloads' / filename)
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def linux_appimage_download_view(request):
     """
     Serve the latest Linux AppImage build.
@@ -77,12 +99,16 @@ def linux_appimage_download_view(request):
     Browsers are picky about large downloads: set an explicit Content-Length and
     stable attachment headers so the transfer does not end as "Failed" at 100%.
     """
-    default_download_path = Path('/var/www/downloads/client-latest.AppImage')
-    configured_download_path = getattr(settings, 'LINUX_APPIMAGE_PATH', None)
-    appimage_path = Path(configured_download_path) if configured_download_path else default_download_path
-
-    if not appimage_path.exists() or not appimage_path.is_file():
-        return HttpResponse(f'Linux AppImage not found at: {appimage_path}', status=404)
+    appimage_path = _resolve_public_download_file(
+        env_path_setting='LINUX_APPIMAGE_PATH',
+        filename='client-latest.AppImage',
+    )
+    if appimage_path is None:
+        return HttpResponse(
+            'Linux AppImage not found. Put client-latest.AppImage in /var/www/downloads/ '
+            'or server/backend/static/downloads/ (see README).',
+            status=404,
+        )
 
     file_size = appimage_path.stat().st_size
     filename = 'client-latest.AppImage'
@@ -99,12 +125,16 @@ def linux_appimage_download_view(request):
 
 def windows_setup_download_view(request):
     """Serve the Windows NSIS installer (same pattern as Linux AppImage)."""
-    default_path = Path('/var/www/downloads/qlean-setup.exe')
-    configured = getattr(settings, 'WINDOWS_SETUP_PATH', None)
-    setup_path = Path(configured) if configured else default_path
-
-    if not setup_path.exists() or not setup_path.is_file():
-        return HttpResponse(f'Windows installer not found at: {setup_path}', status=404)
+    setup_path = _resolve_public_download_file(
+        env_path_setting='WINDOWS_SETUP_PATH',
+        filename='qlean-setup.exe',
+    )
+    if setup_path is None:
+        return HttpResponse(
+            'Windows installer not found. Put qlean-setup.exe in /var/www/downloads/ '
+            'or server/backend/static/downloads/ (see README).',
+            status=404,
+        )
 
     file_size = setup_path.stat().st_size
     file_handle = open(setup_path, 'rb')
