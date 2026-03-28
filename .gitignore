@@ -7,3 +7,7 @@ server/.env
 .env
 server/backend/dataset
 node_modules/
+
+# Large desktop installers (keep on server; do not commit)
+server/backend/static/downloads/*
+!server/backend/static/downloads/.gitkeep
