@@ -73,6 +73,9 @@ def frontend_view(request, path=''):
 def linux_appimage_download_view(request):
     """
     Serve the latest Linux AppImage build.
+
+    Browsers are picky about large downloads: set an explicit Content-Length and
+    stable attachment headers so the transfer does not end as "Failed" at 100%.
     """
     default_download_path = Path('/var/www/downloads/client-latest.AppImage')
     configured_download_path = getattr(settings, 'LINUX_APPIMAGE_PATH', None)
@@ -81,8 +84,16 @@ def linux_appimage_download_view(request):
     if not appimage_path.exists() or not appimage_path.is_file():
         return HttpResponse(f'Linux AppImage not found at: {appimage_path}', status=404)
 
-    response = FileResponse(open(appimage_path, 'rb'), as_attachment=True, filename='client-latest.AppImage')
+    file_size = appimage_path.stat().st_size
+    filename = 'client-latest.AppImage'
+
+    # Open once; FileResponse will close the file when the response finishes.
+    file_handle = open(appimage_path, 'rb')
+    response = FileResponse(file_handle, as_attachment=True, filename=filename)
     response['Content-Type'] = 'application/octet-stream'
+    response['Content-Length'] = str(file_size)
+    response['Cache-Control'] = 'no-store, max-age=0'
+    response['X-Content-Type-Options'] = 'nosniff'
     return response
 
 
