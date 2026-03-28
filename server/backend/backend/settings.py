@@ -169,5 +169,6 @@ CORS_ALLOW_ALL_ORIGINS = os.getenv("CORS_ALLOW_ALL_ORIGINS", "True").lower() == 
 # Core simulation service
 CORE_SERVICE_URL = os.getenv("CORE_SERVICE_URL", "http://core:8000")
 
-# Public Linux desktop artifact (AppImage) path served by backend download route.
+# Public desktop artifacts served by backend download routes (defaults match /var/www/downloads).
 LINUX_APPIMAGE_PATH = os.getenv("LINUX_APPIMAGE_PATH", "/var/www/downloads/client-latest.AppImage")
+WINDOWS_SETUP_PATH = os.getenv("WINDOWS_SETUP_PATH", "/var/www/downloads/qlean-setup.exe")

@@ -6,5 +6,4 @@ epics & dataset/
 server/.env
 .env
 server/backend/dataset
-nodemodules/
-landingpage/nodemodules/
+node_modules/

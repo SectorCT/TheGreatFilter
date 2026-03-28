@@ -135,6 +135,21 @@ VITE_API_BASE_URL=http://localhost:8000
 
 The client builds request paths like `/api/auth/login/`; [client/src/renderer/src/utils/api/config.ts](client/src/renderer/src/utils/api/config.ts) accepts either a bare origin (`http://localhost:8000`) or a base URL ending in `/api`. Do not commit environment files that point to private or production APIs unless you intend to.
 
+### Serving the same client from Django (production / `Frontend not found`)
+
+Django serves the React SPA from `server/backend/static/client/dist/` (e.g. `index.html` plus `assets/`). Build the renderer and copy it there:
+
+```bash
+cd client
+npm install
+npm run build
+# electron-vite writes the web bundle under out/renderer/
+mkdir -p ../server/backend/static/client/dist
+cp -r out/renderer/* ../server/backend/static/client/dist/
+```
+
+On the server (paths match `/home/app/backend` in Docker), the same copy targets `/home/app/backend/static/client/dist/`. Public installers can live under `/var/www/downloads/`; Django exposes `GET /downloads/client-latest.AppImage` and `GET /downloads/qlean-setup.exe` (override paths with `LINUX_APPIMAGE_PATH` / `WINDOWS_SETUP_PATH` in `.env`).
+
 ### Key client features
 
 - **Water measurement management** — manual entry, CSV import, USB/serial lab equipment integration, GEMStat dataset browser

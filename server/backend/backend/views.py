@@ -8,6 +8,7 @@ from rest_framework import status
 from django.db import connection
 from django.conf import settings
 from django.http import FileResponse, HttpResponse
+import mimetypes
 import os
 from pathlib import Path
 
@@ -44,21 +45,29 @@ def health_check(request):
 def frontend_view(request, path=''):
     """
     Serve the frontend application for all non-API routes.
-    This handles SPA routing by serving index.html for all frontend routes.
+    Serve real files under static/client/dist/ (e.g. assets/*.js); otherwise SPA index.html.
     """
-    # Check if this is a request for a static file
-    if path and not path.startswith('api/'):
-        # Try to serve static files first
-        static_file_path = os.path.join(settings.STATICFILES_DIRS[0], 'client', 'dist', 'index.html')
-        if os.path.exists(static_file_path) and os.path.isfile(static_file_path):
-            return FileResponse(open(static_file_path, 'rb'))
-    
-    # For all other routes, serve the main index.html directly
-    index_file_path = os.path.join(settings.STATICFILES_DIRS[0], 'client', 'dist', 'index.html')
-    if os.path.exists(index_file_path):
+    base = Path(settings.STATICFILES_DIRS[0]) / 'client' / 'dist'
+    base_resolved = base.resolve()
+    index_file_path = base / 'index.html'
+
+    rel = (path or '').strip('/')
+    if rel and not rel.startswith('api/'):
+        candidate = (base / rel).resolve()
+        try:
+            candidate.relative_to(base_resolved)
+        except ValueError:
+            candidate = None
+        if candidate is not None and candidate.is_file():
+            content_type, _ = mimetypes.guess_type(str(candidate))
+            return FileResponse(open(candidate, 'rb'), content_type=content_type or 'application/octet-stream')
+
+    if index_file_path.is_file():
         return FileResponse(open(index_file_path, 'rb'), content_type='text/html')
-    else:
-        return HttpResponse("Frontend not found. Please build the client application. Looking for: " + index_file_path, status=404)
+    return HttpResponse(
+        'Frontend not found. Please build the client application. Looking for: ' + str(index_file_path),
+        status=404,
+    )
 
 
 def linux_appimage_download_view(request):
@@ -73,5 +82,19 @@ def linux_appimage_download_view(request):
         return HttpResponse(f'Linux AppImage not found at: {appimage_path}', status=404)
 
     response = FileResponse(open(appimage_path, 'rb'), as_attachment=True, filename='client-latest.AppImage')
+    response['Content-Type'] = 'application/octet-stream'
+    return response
+
+
+def windows_setup_download_view(request):
+    """Serve the Windows NSIS installer (same pattern as Linux AppImage)."""
+    default_path = Path('/var/www/downloads/qlean-setup.exe')
+    configured = getattr(settings, 'WINDOWS_SETUP_PATH', None)
+    setup_path = Path(configured) if configured else default_path
+
+    if not setup_path.exists() or not setup_path.is_file():
+        return HttpResponse(f'Windows installer not found at: {setup_path}', status=404)
+
+    response = FileResponse(open(setup_path, 'rb'), as_attachment=True, filename='qlean-setup.exe')
     response['Content-Type'] = 'application/octet-stream'
     return response
